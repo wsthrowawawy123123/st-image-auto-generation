@@ -507,26 +507,42 @@ function getRecentContextForImageAnalysis(context) {
 
 async function classifyReplyForImage(context) {
     const settings = extension_settings[extensionName]?.llmAnalysis || {};
-    const { latestAssistant } =
+    const { latestAssistant, latestUser, previousAssistant } =
         getRecentContextForImageAnalysis(context);
 
     const assistantText = preprocessForImagePrompt(latestAssistant);
+    const userText = preprocessForImagePrompt(latestUser);
+    const prevAssistantText = preprocessForImagePrompt(previousAssistant);
 
-    const classifierPrompt = `Does the assistant reply contain visible narration that could be illustrated?
+    const classifierPrompt = `Determine whether the assistant reply contains visible narration that could be illustrated with an image.
 
-    Text between *asterisks* is visible narration.
+    Text between *asterisks* represents visible narration.
 
-    Return YES if the assistant reply contains any visible action, pose, expression, gesture, interaction with objects, or scene detail.
+    Return YES if the reply contains any visible action or description, including:
+    - body movement
+    - pose change
+    - facial expression
+    - gesture or body language
+    - interaction with objects or furniture
+    - environment or lighting description
+    - characters moving within a scene
+    - physical or sexual interaction between characters
 
-    Return NO only if the assistant reply is pure dialogue with no visible narration.
+    Return NO only if the reply is pure dialogue with no visible narration.
 
-    Reply:
-    ${assistantText}
-
-    Answer with exactly one word:
+    Output exactly one word:
     YES
     or
-    NO`;
+    NO
+
+    Recent user context:
+    ${userText || '(none)'}
+
+    Previous assistant context:
+    ${prevAssistantText || '(none)'}
+
+    Current assistant reply:
+    ${assistantText}`;
 
     const result = await callRunpodChat(
         [
@@ -539,10 +555,10 @@ async function classifyReplyForImage(context) {
                 content: classifierPrompt,
             },
         ],
-        {
-            max_tokens: settings.classifierMaxTokens ?? 8,
-            temperature: settings.classifierTemperature ?? 0.1,
-        },
+        // {
+        //     max_tokens: settings.classifierMaxTokens ?? 8,
+        //     temperature: settings.classifierTemperature ?? 0.1,
+        // },
     );
 
     const normalized = result.trim().toUpperCase();
