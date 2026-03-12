@@ -752,7 +752,6 @@ async function classifyReplyForImage(context) {
 
 async function generateImageTagFromReply(context) {
     const settings = extension_settings[extensionName]?.llmAnalysis || {};
-    if (isNSFW) return true;
     const { latestAssistant, latestUser, previousAssistant } =
         getRecentContextForImageAnalysis(context);
 
