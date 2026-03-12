@@ -28,24 +28,6 @@ const INSERT_TYPE = {
 
 let isImageAnalysisCall = false;
 
-/**
- * Escapes characters for safe inclusion inside HTML attribute values.
- * @param {string} value
- * @returns {string}
- */
-function escapeHtmlAttribute(value) {
-    if (typeof value !== 'string') {
-        return '';
-    }
-
-    return value
-        .replace(/&/g, '&amp;')
-        .replace(/"/g, '&quot;')
-        .replace(/'/g, '&#39;')
-        .replace(/</g, '&lt;')
-        .replace(/>/g, '&gt;');
-}
-
 // Default settings
 const defaultSettings = {
     insertType: INSERT_TYPE.DISABLED,
@@ -76,6 +58,15 @@ You must insert a <pic prompt="example prompt"> at end of the reply. Prompts are
 
         includeLastUserMessage: true,
         includePreviousAssistantMessage: false,
+
+        triggerProbabilities: {
+            nsfw: 1.0,
+            selfie: 1.0,
+            food: 0.95,
+            location: 0.9,
+            interaction: 0.7,
+            scene: 0.5
+        },
     },
 };
 
@@ -827,6 +818,45 @@ async function generateImageTagFromReply(context) {
    return sceneTags.trim().replace(/^["']|["']$/g, '');
 }
 
+function detectTriggerType(context) {
+    const { latestAssistant, latestUser } =
+        getRecentContextForImageAnalysis(context);
+
+    const text = `${latestUser} ${latestAssistant}`.toLowerCase();
+
+    if (/selfie|send.*pic|send.*photo|take.*picture|show.*picture/.test(text)) {
+        return "selfie";
+    }
+
+    if (/kiss|sex|naked|moan|thrust|straddle|cum|climax/.test(text)) {
+        return "nsfw";
+    }
+
+    if (/eat|food|plate|meal|drink|coffee|restaurant|pizza|burger/.test(text)) {
+        return "food";
+    }
+
+    if (/walks? into|enter|arrive|restaurant|office|room|door/.test(text)) {
+        return "location";
+    }
+
+    if (/touch|grabs|holds|pulls|pushes|leans/.test(text)) {
+        return "interaction";
+    }
+
+    if (Math.random() < 0.15) return "scene";
+    return "none";
+}
+
+function shouldGenerateForTrigger(triggerType) {
+    const probs =
+        extension_settings[extensionName]?.triggerProbabilities || {};
+
+    const chance = probs[triggerType] ?? 0.4;
+
+    return Math.random() <= chance;
+}
+
 async function handleIncomingMessage() {
     // Prevent recursion during secondary analysis calls
     if (isImageAnalysisCall) {
@@ -859,7 +889,22 @@ async function handleIncomingMessage() {
     try {
         isImageAnalysisCall = true;
 
-        shouldGenerateImage = await classifyReplyForImage(context);
+        const triggerType = detectTriggerType(context);
+
+        console.log(`[${extensionName}] trigger detected`, triggerType);
+
+        // Always generate selfies
+        if (triggerType === "selfie") {
+            shouldGenerateImage = true;
+        } else {
+            const classifierResult = await classifyReplyForImage(context);
+
+            if (!classifierResult) {
+                return;
+            }
+
+            shouldGenerateImage = shouldGenerateForTrigger(triggerType);
+        }
 
         console.log(`[${extensionName}] classifier result`, {
             shouldGenerateImage,
