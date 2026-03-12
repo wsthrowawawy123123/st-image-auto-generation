@@ -459,9 +459,9 @@ function preprocessForImagePrompt(text) {
     cleaned = cleaned.replace(/"[^"]*"/g, ' ');
     cleaned = cleaned.replace(/“[^”]*”/g, ' ');
 
-    // Normalize common POV words
-    cleaned = cleaned.replace(/\byou\b/gi, 'viewer');
-    cleaned = cleaned.replace(/\byour\b/gi, "viewer's");
+    // // Normalize common POV words
+    // cleaned = cleaned.replace(/\byou\b/gi, 'viewer');
+    // cleaned = cleaned.replace(/\byour\b/gi, "viewer's");
 
     // Collapse whitespace
     cleaned = cleaned.replace(/\s+/g, ' ').trim();
@@ -575,25 +575,26 @@ async function classifyReplyForImage(context) {
     const userText = preprocessForImagePrompt(latestUser);
     const prevAssistantText = preprocessForImagePrompt(previousAssistant);
 
-    const classifierPrompt = `You are classifying whether a chat reply should trigger image generation.
+    const classifierPrompt = `Determine whether the assistant reply contains visible narration that could be illustrated with an image.
 
-    Return only YES or NO.
+    Text between *asterisks* represents visible narration.
 
-    Return YES if the reply contains any visible narration, including:
+    Return YES if the reply contains any visible action or description, including:
     - body movement
     - pose change
     - facial expression
-    - gesture
+    - gesture or body language
     - interaction with objects or furniture
     - environment or lighting description
-    - character entering or moving within a scene
-    - sexual interaction between characters
-    - physical interaction between characters
+    - characters moving within a scene
+    - physical or sexual interaction between characters
 
-    Return NO only if the reply is mostly dialogue
-    with no visible narration.
+    Return NO only if the reply is pure dialogue with no visible narration.
 
-    Return NO only if the reply is pure dialogue with no visible narration or action.
+    Output exactly one word:
+    YES
+    or
+    NO
 
     Recent user context:
     ${userText || '(none)'}
@@ -608,8 +609,7 @@ async function classifyReplyForImage(context) {
         [
             {
                 role: 'system',
-                content:
-                    'You are a strict binary classifier. Output only YES or NO.',
+                content: 'You classify whether narration contains visible actions. Respond only YES or NO.',
             },
             {
                 role: 'user',
