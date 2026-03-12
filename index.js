@@ -492,20 +492,32 @@ eventSource.on(event_types.MESSAGE_RECEIVED, handleIncomingMessage);
 async function callRunpodBackend(endpoint, apiKey, model, messages, options = {}) {
     const settings = extension_settings[extensionName]?.llmAnalysis || {};
 
+    const max_tokens =
+        options.max_tokens ??
+        settings.promptMaxTokens ??
+        120;
+
+    const temperature =
+        options.temperature ??
+        settings.promptTemperature ??
+        0.4;
+
+    const requestBody = {
+        input: {
+            model,
+            messages,
+            max_tokens,
+            temperature,
+        },
+    };
+
     const response = await fetch(endpoint, {
         method: 'POST',
         headers: {
             'Content-Type': 'application/json',
             ...(apiKey ? { Authorization: `Bearer ${apiKey}` } : {}),
         },
-        body: JSON.stringify({
-            input: {
-                model,
-                messages,
-                max_tokens: options.max_tokens ?? settings.promptMaxTokens ?? 120,
-                temperature: options.temperature ?? settings.promptTemperature ?? 0.4,
-            },
-        }),
+        body: JSON.stringify(requestBody),
     });
 
     if (!response.ok) {
@@ -516,36 +528,69 @@ async function callRunpodBackend(endpoint, apiKey, model, messages, options = {}
     let data = await response.json();
     console.log(`[${extensionName}] Runpod raw response`, data);
 
-    let retries = 0;
-    while (data?.status && data.status !== 'COMPLETED' && retries < 5) {
-        await new Promise(r => setTimeout(r, 800));
+    if (data?.status && data.status !== 'COMPLETED') {
+        const jobId = data?.id;
+        if (!jobId) {
+            throw new Error('Runpod returned queued job without id');
+        }
 
-        const retry = await fetch(endpoint, {
-            method: 'POST',
-            headers: {
-                'Content-Type': 'application/json',
-                ...(apiKey ? { Authorization: `Bearer ${apiKey}` } : {}),
-            },
-            body: JSON.stringify({
-                input: {
-                    model,
-                    messages,
-                    max_tokens: options.max_tokens ?? settings.promptMaxTokens ?? 120,
-                    temperature: options.temperature ?? settings.promptTemperature ?? 0.4,
+        const baseUrl = endpoint.replace(/\/runsync$/, '').replace(/\/run$/, '');
+        const statusUrl = `${baseUrl}/status/${jobId}`;
+
+        let retries = 0;
+        const maxRetries = 30;
+
+        while (retries < maxRetries) {
+            await new Promise(r => setTimeout(r, 1000));
+
+            const statusResp = await fetch(statusUrl, {
+                method: 'GET',
+                headers: {
+                    'Content-Type': 'application/json',
+                    ...(apiKey ? { Authorization: `Bearer ${apiKey}` } : {}),
                 },
-            }),
-        });
+            });
 
-        data = await retry.json();
-        retries++;
+            if (!statusResp.ok) {
+                const text = await statusResp.text();
+                throw new Error(`Runpod status error ${statusResp.status}: ${text}`);
+            }
+
+            data = await statusResp.json();
+            console.log(`[${extensionName}] Runpod status response`, data);
+
+            if (data?.status === 'COMPLETED') {
+                break;
+            }
+
+            if (data?.status === 'FAILED' || data?.status === 'CANCELLED' || data?.status === 'TIMED_OUT') {
+                throw new Error(`Runpod job ended with status: ${data.status}`);
+            }
+
+            retries++;
+        }
+
+        if (data?.status !== 'COMPLETED') {
+            throw new Error('Runpod job did not complete in time');
+        }
     }
 
     const tokens = data?.output?.[0]?.choices?.[0]?.tokens;
-    if (Array.isArray(tokens)) return tokens.join('').trim();
+    if (Array.isArray(tokens)) {
+        return tokens.join('').trim();
+    }
 
     const content = data?.output?.[0]?.choices?.[0]?.message?.content;
-    if (typeof content === 'string') return content.trim();
+    if (typeof content === 'string') {
+        return content.trim();
+    }
 
+    const text = data?.output?.[0]?.choices?.[0]?.text;
+    if (typeof text === 'string') {
+        return text.trim();
+    }
+
+    console.warn(`[${extensionName}] Runpod completed without parseable output`, data);
     return '';
 }
 
