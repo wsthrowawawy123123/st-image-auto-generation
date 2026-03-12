@@ -579,19 +579,21 @@ async function classifyReplyForImage(context) {
 
     Return only YES or NO.
 
-    Return YES if the reply contains a clear visual moment, including:
-    - scene or location change
-    - pose or body position change
-    - facial expression or body language
+    Return YES if the reply contains any visible narration, including:
+    - body movement
+    - pose change
+    - facial expression
+    - gesture
     - interaction with objects or furniture
-    - clothing or appearance change
-    - request for a photo, selfie, or visual confirmation
-    - visually significant physical interaction
-    - romantic, suggestive, or sexual physical interaction
-    - environment or lighting detail
-    - other clearly visual narration
+    - environment or lighting description
+    - character entering or moving within a scene
+    - sexual interaction between characters
+    - physical interaction between characters
 
-    Return NO if the reply is mostly dialogue, internal thought, or lacks meaningful visual description.
+    Return NO only if the reply is mostly dialogue
+    with no visible narration.
+
+    Return NO only if the reply is pure dialogue with no visible narration or action.
 
     Recent user context:
     ${userText || '(none)'}
