@@ -35,12 +35,8 @@
                 </label>
             </div>
 
-            <input
-                id="llm_analysis_endpoint"
-                class="text_pole"
-                type="text"
-                placeholder="https://api.runpod.ai/v2/YOUR_ENDPOINT/runsync"
-            >
+            <input id="llm_analysis_endpoint" class="text_pole" type="text"
+                placeholder="https://api.runpod.ai/v2/YOUR_ENDPOINT/runsync">
         </div>
 
         <div>
@@ -50,12 +46,7 @@
                 </label>
             </div>
 
-            <input
-                id="llm_analysis_api_key"
-                class="text_pole"
-                type="text"
-                placeholder="rpa_xxxxxxxxx"
-            >
+            <input id="llm_analysis_api_key" class="text_pole" type="text" placeholder="rpa_xxxxxxxxx">
         </div>
 
         <div>
@@ -65,12 +56,85 @@
                 </label>
             </div>
 
-            <input
-                id="llm_analysis_model"
-                class="text_pole"
-                type="text"
-                placeholder="thedrummer/cydonia-24b-v4.3"
-            >
+            <input id="llm_analysis_model" class="text_pole" type="text" placeholder="thedrummer/cydonia-24b-v4.3">
+        </div>
+
+        <hr class="sysHR">
+
+        <div class="flex-container flexnowrap">
+            <label class="checkbox_label" for="llm_analysis_classifier_separate">
+                <span>Use Separate Classifier Backend</span>
+                <input type="checkbox" id="llm_analysis_classifier_separate" class="checkbox">
+            </label>
+        </div>
+
+        <div>
+            <div>
+                <label for="llm_analysis_classifier_backend" class="flex1">
+                    Classifier Backend
+                </label>
+            </div>
+
+            <select id="llm_analysis_classifier_backend" class="text_pole widthNatural margin0">
+                <option value="kobold">KoboldCPP</option>
+                <option value="runpod">Runpod</option>
+                <option value="openai">OpenAI-Compatible</option>
+            </select>
+        </div>
+
+        <div>
+            <div>
+                <label for="llm_analysis_classifier_endpoint" class="flex1">
+                    Classifier Endpoint
+                </label>
+            </div>
+
+            <input id="llm_analysis_classifier_endpoint" class="text_pole" type="text"
+                placeholder="http://127.0.0.1:5001/v1/chat/completions">
+        </div>
+
+        <div>
+            <div>
+                <label for="llm_analysis_classifier_api_key" class="flex1">
+                    Classifier API Key
+                </label>
+            </div>
+
+            <input id="llm_analysis_classifier_api_key" class="text_pole" type="text"
+                placeholder="Optional for local KoboldCPP">
+        </div>
+
+        <div>
+            <div>
+                <label for="llm_analysis_classifier_model" class="flex1">
+                    Classifier Model
+                </label>
+            </div>
+
+            <input id="llm_analysis_classifier_model" class="text_pole" type="text"
+                placeholder="Qwen/Qwen2.5-7B-Instruct">
+        </div>
+
+        <div>
+            <div>
+                <label for="llm_analysis_classifier_max_tokens" class="flex1">
+                    Classifier Max Tokens
+                </label>
+            </div>
+
+            <input id="llm_analysis_classifier_max_tokens" class="text_pole" type="number" min="1" step="1"
+                placeholder="8">
+        </div>
+
+        <div>
+            <div>
+                <label for="llm_analysis_classifier_temperature" class="flex1">
+                    Classifier Temperature
+                </label>
+            </div>
+
+            <input id="llm_analysis_classifier_temperature" class="text_pole" type="number" min="0" max="2" step="0.1"
+                placeholder="0.1">
         </div>
 
     </div>

@@ -63,10 +63,17 @@ You must insert a <pic prompt="example prompt"> at end of the reply. Prompts are
         endpoint: '',
         apiKey: '',
         model: 'thedrummer/cydonia-24b-v4.3',
-        classifierMaxTokens: 8,
         promptMaxTokens: 120,
-        classifierTemperature: 0.1,
         promptTemperature: 0.4,
+
+        classifierUseSeparateBackend: false,
+        classifierBackend: 'kobold',
+        classifierEndpoint: 'http://localhost:5001/v1/chat/completions',
+        classifierApiKey: '',
+        classifierModel: '',
+        classifierMaxTokens: 8,
+        classifierTemperature: 0.1,
+
         includeLastUserMessage: true,
         includePreviousAssistantMessage: false,
     },
@@ -81,7 +88,7 @@ function updateUI() {
     );
 
     // Only update form elements if they exist
-        if ($('#image_generation_insert_type').length) {
+    if ($('#image_generation_insert_type').length) {
         $('#image_generation_insert_type').val(
             extension_settings[extensionName].insertType,
         );
@@ -111,6 +118,35 @@ function updateUI() {
         );
         $('#llm_analysis_model').val(
             extension_settings[extensionName].llmAnalysis.model,
+        );
+
+        $('#llm_analysis_classifier_separate').prop(
+            'checked',
+            extension_settings[extensionName].llmAnalysis.classifierUseSeparateBackend
+        );
+
+        $('#llm_analysis_classifier_backend').val(
+            extension_settings[extensionName].llmAnalysis.classifierBackend
+        );
+
+        $('#llm_analysis_classifier_endpoint').val(
+            extension_settings[extensionName].llmAnalysis.classifierEndpoint
+        );
+
+        $('#llm_analysis_classifier_api_key').val(
+            extension_settings[extensionName].llmAnalysis.classifierApiKey
+        );
+
+        $('#llm_analysis_classifier_model').val(
+            extension_settings[extensionName].llmAnalysis.classifierModel
+        );
+
+        $('#llm_analysis_classifier_max_tokens').val(
+            extension_settings[extensionName].llmAnalysis.classifierMaxTokens
+        );
+
+        $('#llm_analysis_classifier_temperature').val(
+            extension_settings[extensionName].llmAnalysis.classifierTemperature
         );
     }
 }
@@ -238,6 +274,48 @@ async function createSettings(settingsHtml) {
     $('#llm_analysis_model').on('input', function () {
         extension_settings[extensionName].llmAnalysis.model =
             $(this).val();
+        saveSettingsDebounced();
+    });
+
+    $('#llm_analysis_classifier_separate').on('change', function () {
+        extension_settings[extensionName].llmAnalysis.classifierUseSeparateBackend =
+            $(this).prop('checked');
+        saveSettingsDebounced();
+    });
+
+    $('#llm_analysis_classifier_backend').on('change', function () {
+        extension_settings[extensionName].llmAnalysis.classifierBackend =
+            $(this).val();
+        saveSettingsDebounced();
+    });
+
+    $('#llm_analysis_classifier_endpoint').on('input', function () {
+        extension_settings[extensionName].llmAnalysis.classifierEndpoint =
+            $(this).val();
+        saveSettingsDebounced();
+    });
+
+    $('#llm_analysis_classifier_api_key').on('input', function () {
+        extension_settings[extensionName].llmAnalysis.classifierApiKey =
+            $(this).val();
+        saveSettingsDebounced();
+    });
+
+    $('#llm_analysis_classifier_model').on('input', function () {
+        extension_settings[extensionName].llmAnalysis.classifierModel =
+            $(this).val();
+        saveSettingsDebounced();
+    });
+
+    $('#llm_analysis_classifier_max_tokens').on('input', function () {
+        extension_settings[extensionName].llmAnalysis.classifierMaxTokens =
+            Number($(this).val());
+        saveSettingsDebounced();
+    });
+
+    $('#llm_analysis_classifier_temperature').on('input', function () {
+        extension_settings[extensionName].llmAnalysis.classifierTemperature =
+            Number($(this).val());
         saveSettingsDebounced();
     });
 
@@ -411,27 +489,21 @@ function preprocessForImagePrompt(text) {
 // Listen for incoming assistant messages
 eventSource.on(event_types.MESSAGE_RECEIVED, handleIncomingMessage);
 
-async function callRunpodChat(messages, options = {}) {
-    const settings = extension_settings[extensionName]?.llmAnalysis;
-    if (!settings?.endpoint || !settings?.model) {
-        throw new Error('LLM analysis endpoint or model is not configured');
-    }
+async function callRunpodBackend(endpoint, apiKey, model, messages, options = {}) {
+    const settings = extension_settings[extensionName]?.llmAnalysis || {};
 
-    const response = await fetch(settings.endpoint, {
+    const response = await fetch(endpoint, {
         method: 'POST',
         headers: {
             'Content-Type': 'application/json',
-            ...(settings.apiKey
-                ? { Authorization: `Bearer ${settings.apiKey}` }
-                : {}),
+            ...(apiKey ? { Authorization: `Bearer ${apiKey}` } : {}),
         },
         body: JSON.stringify({
             input: {
-                model: settings.model,
+                model,
                 messages,
                 max_tokens: options.max_tokens ?? settings.promptMaxTokens ?? 120,
-                temperature:
-                    options.temperature ?? settings.promptTemperature ?? 0.4,
+                temperature: options.temperature ?? settings.promptTemperature ?? 0.4,
             },
         }),
     });
@@ -445,27 +517,21 @@ async function callRunpodChat(messages, options = {}) {
     console.log(`[${extensionName}] Runpod raw response`, data);
 
     let retries = 0;
-
     while (data?.status && data.status !== 'COMPLETED' && retries < 5) {
-        console.log(`[${extensionName}] waiting for Runpod job`, data.status);
-
         await new Promise(r => setTimeout(r, 800));
 
-        const retry = await fetch(settings.endpoint, {
+        const retry = await fetch(endpoint, {
             method: 'POST',
             headers: {
                 'Content-Type': 'application/json',
-                ...(settings.apiKey
-                    ? { Authorization: `Bearer ${settings.apiKey}` }
-                    : {}),
+                ...(apiKey ? { Authorization: `Bearer ${apiKey}` } : {}),
             },
             body: JSON.stringify({
                 input: {
-                    model: settings.model,
+                    model,
                     messages,
                     max_tokens: options.max_tokens ?? settings.promptMaxTokens ?? 120,
-                    temperature:
-                        options.temperature ?? settings.promptTemperature ?? 0.4,
+                    temperature: options.temperature ?? settings.promptTemperature ?? 0.4,
                 },
             }),
         });
@@ -473,13 +539,83 @@ async function callRunpodChat(messages, options = {}) {
         data = await retry.json();
         retries++;
     }
-    const tokens = data?.output?.[0]?.choices?.[0]?.tokens;
 
-    if (Array.isArray(tokens)) {
-        return tokens.join('').trim();
-    }
+    const tokens = data?.output?.[0]?.choices?.[0]?.tokens;
+    if (Array.isArray(tokens)) return tokens.join('').trim();
+
+    const content = data?.output?.[0]?.choices?.[0]?.message?.content;
+    if (typeof content === 'string') return content.trim();
 
     return '';
+}
+
+async function callKoboldBackend(endpoint, apiKey, model, messages, options = {}) {
+    const response = await fetch(endpoint, {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json',
+            ...(apiKey ? { Authorization: `Bearer ${apiKey}` } : {}),
+        },
+        body: JSON.stringify({
+            ...(model ? { model } : {}),
+            messages,
+            max_tokens: options.max_tokens ?? 8,
+            temperature: options.temperature ?? 0.1,
+        }),
+    });
+
+    if (!response.ok) {
+        const text = await response.text();
+        throw new Error(`Kobold chat error ${response.status}: ${text}`);
+    }
+
+    const data = await response.json();
+
+    return (
+        data?.choices?.[0]?.message?.content ??
+        data?.choices?.[0]?.text ??
+        ''
+    ).trim();
+}
+
+async function callChat(messages, options = {}) {
+    const settings = extension_settings[extensionName]?.llmAnalysis || {};
+
+    const useClassifierBackend = options.useClassifierBackend === true;
+
+    const backend = useClassifierBackend
+        ? (settings.classifierBackend || 'kobold')
+        : 'runpod';
+
+    const endpoint = useClassifierBackend
+        ? (settings.classifierEndpoint || settings.endpoint)
+        : settings.endpoint;
+
+    const apiKey = useClassifierBackend
+        ? (settings.classifierApiKey || settings.apiKey)
+        : settings.apiKey;
+
+    const model = useClassifierBackend
+        ? (settings.classifierModel || settings.model)
+        : settings.model;
+
+    if (!endpoint) {
+        throw new Error(`Missing endpoint for backend: ${backend}`);
+    }
+
+    if (backend === 'runpod') {
+        return await callRunpodBackend(endpoint, apiKey, model, messages, options);
+    }
+
+    if (backend === 'kobold') {
+        return await callKoboldBackend(endpoint, apiKey, model, messages, options);
+    }
+
+    if (backend === 'openai') {
+        return await callOpenAIBackend(endpoint, apiKey, model, messages, options);
+    }
+
+    throw new Error(`Unsupported backend: ${backend}`);
 }
 
 function getRecentContextForImageAnalysis(context) {
@@ -514,11 +650,14 @@ async function classifyReplyForImage(context) {
     const userText = preprocessForImagePrompt(latestUser);
     const prevAssistantText = preprocessForImagePrompt(previousAssistant);
 
-    const classifierPrompt = `Determine whether the assistant reply contains visible narration that could be illustrated with an image.
+    const classifierPrompt = `Determine whether the CURRENT assistant reply contains visible narration that could be illustrated with an image.
 
     Text between *asterisks* represents visible narration.
 
-    Return YES if the reply contains any visible action or description, including:
+    Classify primarily based on the CURRENT assistant reply.
+    Use Recent user context and Previous assistant context only to resolve ambiguity, not as standalone reasons to answer YES.
+
+    Return YES if the CURRENT assistant reply contains any visible action or visible description, including:
     - body movement
     - pose change
     - facial expression
@@ -527,8 +666,10 @@ async function classifyReplyForImage(context) {
     - environment or lighting description
     - characters moving within a scene
     - physical or sexual interaction between characters
+    - clothing or body exposure changes
+    - changes in position relative to another character
 
-    Return NO only if the reply is pure dialogue with no visible narration.
+    Return NO only if the CURRENT assistant reply is pure dialogue with no visible narration.
 
     Output exactly one word:
     YES
@@ -544,7 +685,7 @@ async function classifyReplyForImage(context) {
     Current assistant reply:
     ${assistantText}`;
 
-    const result = await callRunpodChat(
+    const result = await callChat(
         [
             {
                 role: 'system',
@@ -555,14 +696,17 @@ async function classifyReplyForImage(context) {
                 content: classifierPrompt,
             },
         ],
-        // {
-        //     max_tokens: settings.classifierMaxTokens ?? 8,
-        //     temperature: settings.classifierTemperature ?? 0.1,
-        // },
+        {
+            useClassifierBackend: true,
+            max_tokens: settings.classifierMaxTokens ?? 8,
+            temperature: settings.classifierTemperature ?? 0.1,
+        },
     );
 
-    const normalized = result.trim().toUpperCase();
-    return normalized.startsWith('YES');
+    const normalized = (result || "").trim().toUpperCase();
+    if (normalized.includes("YES")) return true;
+    if (normalized.includes("NO")) return false;
+    return false;
 }
 
 async function generateImageTagFromReply(context) {
@@ -601,7 +745,7 @@ async function generateImageTagFromReply(context) {
     Current assistant reply:
     ${assistantText}`;
 
-    const sceneTags = await callRunpodChat(
+    const sceneTags = await callChat(
         [
             {
                 role: 'system',
