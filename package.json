@@ -1,0 +1,8 @@
+{
+  "name": "st-image-auto-generation",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "test": "node test/imageGenerationState.test.js"
+  }
+}

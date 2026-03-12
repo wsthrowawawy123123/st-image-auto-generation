@@ -5,7 +5,6 @@
     </div>
 
     <div class="inline-drawer-content">
-
         <div class="flex-container flexnowrap">
             <label for="image_generation_insert_type" class="flex1" data-i18n="Image Insert Type">
                 Image Insert Type
@@ -13,7 +12,6 @@
 
             <select id="image_generation_insert_type" class="text_pole widthNatural margin0">
                 <option value="inline">Insert In Current Message</option>
-                <option value="replace">Inline Replace Mode</option>
                 <option value="new">Create New Message</option>
                 <option value="disabled">Disable</option>
             </select>
@@ -34,7 +32,6 @@
                     Runpod Endpoint
                 </label>
             </div>
-
             <input id="llm_analysis_endpoint" class="text_pole" type="text"
                 placeholder="https://api.runpod.ai/v2/YOUR_ENDPOINT/runsync">
         </div>
@@ -45,7 +42,6 @@
                     Runpod API Key
                 </label>
             </div>
-
             <input id="llm_analysis_api_key" class="text_pole" type="text" placeholder="rpa_xxxxxxxxx">
         </div>
 
@@ -55,8 +51,27 @@
                     LLM Model
                 </label>
             </div>
-
             <input id="llm_analysis_model" class="text_pole" type="text" placeholder="thedrummer/cydonia-24b-v4.3">
+        </div>
+
+        <div>
+            <div>
+                <label for="llm_analysis_prompt_max_tokens" class="flex1">
+                    Prompt Max Tokens
+                </label>
+            </div>
+            <input id="llm_analysis_prompt_max_tokens" class="text_pole" type="number" min="1" step="1"
+                placeholder="120">
+        </div>
+
+        <div>
+            <div>
+                <label for="llm_analysis_prompt_temperature" class="flex1">
+                    Prompt Temperature
+                </label>
+            </div>
+            <input id="llm_analysis_prompt_temperature" class="text_pole" type="number" min="0" max="2" step="0.01"
+                placeholder="0.4">
         </div>
 
         <hr class="sysHR">
@@ -74,7 +89,6 @@
                     Classifier Backend
                 </label>
             </div>
-
             <select id="llm_analysis_classifier_backend" class="text_pole widthNatural margin0">
                 <option value="kobold">KoboldCPP</option>
                 <option value="runpod">Runpod</option>
@@ -88,7 +102,6 @@
                     Classifier Endpoint
                 </label>
             </div>
-
             <input id="llm_analysis_classifier_endpoint" class="text_pole" type="text"
                 placeholder="http://127.0.0.1:5001/v1/chat/completions">
         </div>
@@ -99,7 +112,6 @@
                     Classifier API Key
                 </label>
             </div>
-
             <input id="llm_analysis_classifier_api_key" class="text_pole" type="text"
                 placeholder="Optional for local KoboldCPP">
         </div>
@@ -110,7 +122,6 @@
                     Classifier Model
                 </label>
             </div>
-
             <input id="llm_analysis_classifier_model" class="text_pole" type="text"
                 placeholder="Qwen/Qwen2.5-7B-Instruct">
         </div>
@@ -121,9 +132,8 @@
                     Classifier Max Tokens
                 </label>
             </div>
-
             <input id="llm_analysis_classifier_max_tokens" class="text_pole" type="number" min="1" step="1"
-                placeholder="8">
+                placeholder="80">
         </div>
 
         <div>
@@ -132,10 +142,8 @@
                     Classifier Temperature
                 </label>
             </div>
-
-            <input id="llm_analysis_classifier_temperature" class="text_pole" type="number" min="0" max="2" step="0.1"
+            <input id="llm_analysis_classifier_temperature" class="text_pole" type="number" min="0" max="2" step="0.01"
                 placeholder="0.1">
         </div>
-
     </div>
 </div>
