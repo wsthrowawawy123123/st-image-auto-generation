@@ -505,10 +505,35 @@ async function callRunpodChat(messages, options = {}) {
     const data = await response.json();
     console.log(`[${extensionName}] Runpod raw response`, data);
 
-    if (data?.status && data.status !== 'COMPLETED') {
-        throw new Error(`Runpod request did not complete successfully: ${data.status}`);
-    }
+    let retries = 0;
 
+    while (data?.status && data.status !== 'COMPLETED' && retries < 5) {
+        console.log(`[${extensionName}] waiting for Runpod job`, data.status);
+
+        await new Promise(r => setTimeout(r, 800));
+
+        const retry = await fetch(settings.endpoint, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                ...(settings.apiKey
+                    ? { Authorization: `Bearer ${settings.apiKey}` }
+                    : {}),
+            },
+            body: JSON.stringify({
+                input: {
+                    model: settings.model,
+                    messages,
+                    max_tokens: options.max_tokens ?? settings.promptMaxTokens ?? 120,
+                    temperature:
+                        options.temperature ?? settings.promptTemperature ?? 0.4,
+                },
+            }),
+        });
+
+        data = await retry.json();
+        retries++;
+    }
     const tokens = data?.output?.[0]?.choices?.[0]?.tokens;
 
     if (Array.isArray(tokens)) {
