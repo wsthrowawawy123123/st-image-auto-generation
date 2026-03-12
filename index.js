@@ -1,9 +1,9 @@
 // The main script for the extension
 // The following are examples of some basic extension functionality
 
-//You'll likely need to import extension_settings, getContext, and loadExtensionSettings from extensions.js
+// You'll likely need to import extension_settings and getContext from extensions.js
 import { extension_settings, getContext } from '../../../extensions.js';
-//You'll likely need to import some other functions from the main script
+// You'll likely need to import some other functions from the main script
 import {
     saveSettingsDebounced,
     eventSource,
@@ -11,21 +11,22 @@ import {
     updateMessageBlock,
 } from '../../../../script.js';
 import { appendMediaToMessage } from '../../../../script.js';
-import { regexFromString } from '../../../utils.js';
 import { SlashCommandParser } from '../../../slash-commands/SlashCommandParser.js';
 
-// 扩展名称和路径
+// Extension name and path
 const extensionName = 'st-image-auto-generation';
 // /scripts/extensions/third-party
 const extensionFolderPath = `/scripts/extensions/third-party/${extensionName}`;
 
-// 插入类型常量
+// Insert type constants
 const INSERT_TYPE = {
     DISABLED: 'disabled',
     INLINE: 'inline',
     NEW_MESSAGE: 'new',
     REPLACE: 'replace',
 };
+
+let isImageAnalysisCall = false;
 
 /**
  * Escapes characters for safe inclusion inside HTML attribute values.
@@ -45,7 +46,7 @@ function escapeHtmlAttribute(value) {
         .replace(/>/g, '&gt;');
 }
 
-// 默认设置
+// Default settings
 const defaultSettings = {
     insertType: INSERT_TYPE.DISABLED,
     promptInjection: {
@@ -55,20 +56,32 @@ You must insert a <pic prompt="example prompt"> at end of the reply. Prompts are
 </image_generation>`,
         regex: '/<pic[^>]*\\sprompt="([^"]*)"[^>]*?>/g',
         position: 'deep_system', // deep_system, deep_user, deep_assistant
-        depth: 0, // 0表示添加到末尾，>0表示从末尾往前数第几个位置
+        depth: 0, // 0 means append to the end, >0 means insert relative to the end
+    },
+    llmAnalysis: {
+        enabled: true,
+        endpoint: '',
+        apiKey: '',
+        model: 'thedrummer/cydonia-24b-v4.3',
+        classifierMaxTokens: 8,
+        promptMaxTokens: 120,
+        classifierTemperature: 0.1,
+        promptTemperature: 0.4,
+        includeLastUserMessage: true,
+        includePreviousAssistantMessage: false,
     },
 };
 
-// 从设置更新UI
+// Update UI from settings
 function updateUI() {
-    // 根据insertType设置开关状态
+    // Toggle extension button state based on insertType
     $('#auto_generation').toggleClass(
         'selected',
         extension_settings[extensionName].insertType !== INSERT_TYPE.DISABLED,
     );
 
-    // 只在表单元素存在时更新它们
-    if ($('#image_generation_insert_type').length) {
+    // Only update form elements if they exist
+        if ($('#image_generation_insert_type').length) {
         $('#image_generation_insert_type').val(
             extension_settings[extensionName].insertType,
         );
@@ -79,32 +92,43 @@ function updateUI() {
         $('#prompt_injection_text').val(
             extension_settings[extensionName].promptInjection.prompt,
         );
-        $('#prompt_injection_regex').val(
-            extension_settings[extensionName].promptInjection.regex,
-        );
         $('#prompt_injection_position').val(
             extension_settings[extensionName].promptInjection.position,
         );
         $('#prompt_injection_depth').val(
             extension_settings[extensionName].promptInjection.depth,
         );
+
+        $('#llm_analysis_enabled').prop(
+            'checked',
+            extension_settings[extensionName].llmAnalysis.enabled,
+        );
+        $('#llm_analysis_endpoint').val(
+            extension_settings[extensionName].llmAnalysis.endpoint,
+        );
+        $('#llm_analysis_api_key').val(
+            extension_settings[extensionName].llmAnalysis.apiKey,
+        );
+        $('#llm_analysis_model').val(
+            extension_settings[extensionName].llmAnalysis.model,
+        );
     }
 }
 
-// 加载设置
+// Load settings
 async function loadSettings() {
     extension_settings[extensionName] = extension_settings[extensionName] || {};
 
-    // 如果设置为空或缺少必要属性，使用默认设置
+    // If settings are empty or missing required properties, use defaults
     if (Object.keys(extension_settings[extensionName]).length === 0) {
         Object.assign(extension_settings[extensionName], defaultSettings);
     } else {
-        // 确保promptInjection对象存在
+        // Ensure promptInjection object exists
         if (!extension_settings[extensionName].promptInjection) {
             extension_settings[extensionName].promptInjection =
                 defaultSettings.promptInjection;
         } else {
-            // 确保promptInjection的所有子属性都存在
+            // Ensure all promptInjection sub-properties exist
             const defaultPromptInjection = defaultSettings.promptInjection;
             for (const key in defaultPromptInjection) {
                 if (
@@ -117,7 +141,25 @@ async function loadSettings() {
             }
         }
 
-        // 确保insertType属性存在
+        // Ensure llmAnalysis object exists
+        if (!extension_settings[extensionName].llmAnalysis) {
+            extension_settings[extensionName].llmAnalysis =
+                defaultSettings.llmAnalysis;
+        } else {
+            // Ensure all llmAnalysis sub-properties exist
+            const defaultLlmAnalysis = defaultSettings.llmAnalysis;
+            for (const key in defaultLlmAnalysis) {
+                if (
+                    extension_settings[extensionName].llmAnalysis[key] ===
+                    undefined
+                ) {
+                    extension_settings[extensionName].llmAnalysis[key] =
+                        defaultLlmAnalysis[key];
+                }
+            }
+        }
+
+        // Ensure insertType property exists
         if (extension_settings[extensionName].insertType === undefined) {
             extension_settings[extensionName].insertType =
                 defaultSettings.insertType;
@@ -127,19 +169,19 @@ async function loadSettings() {
     updateUI();
 }
 
-// 创建设置页面
+// Create settings panel
 async function createSettings(settingsHtml) {
-    // 创建一个容器来存放设置，确保其正确显示在扩展设置面板中
+    // Create container for extension settings if it doesn't exist
     if (!$('#image_auto_generation_container').length) {
         $('#extensions_settings2').append(
             '<div id="image_auto_generation_container" class="extension_container"></div>',
         );
     }
 
-    // 使用传入的settingsHtml而不是重新获取
+    // Use provided settingsHtml instead of fetching again
     $('#image_auto_generation_container').empty().append(settingsHtml);
 
-    // 添加设置变更事件处理
+    // Add event handlers for settings changes
     $('#image_generation_insert_type').on('change', function () {
         const newValue = $(this).val();
         extension_settings[extensionName].insertType = newValue;
@@ -147,7 +189,7 @@ async function createSettings(settingsHtml) {
         saveSettingsDebounced();
     });
 
-    // 添加提示词注入设置的事件处理
+    // Event handlers for prompt injection settings
     $('#prompt_injection_enabled').on('change', function () {
         extension_settings[extensionName].promptInjection.enabled =
             $(this).prop('checked');
@@ -160,18 +202,13 @@ async function createSettings(settingsHtml) {
         saveSettingsDebounced();
     });
 
-    $('#prompt_injection_regex').on('input', function () {
-        extension_settings[extensionName].promptInjection.regex = $(this).val();
-        saveSettingsDebounced();
-    });
-
     $('#prompt_injection_position').on('change', function () {
         extension_settings[extensionName].promptInjection.position =
             $(this).val();
         saveSettingsDebounced();
     });
 
-    // 深度设置事件处理
+    // Depth setting handler
     $('#prompt_injection_depth').on('input', function () {
         const value = parseInt(String($(this).val()));
         extension_settings[extensionName].promptInjection.depth = isNaN(value)
@@ -180,26 +217,50 @@ async function createSettings(settingsHtml) {
         saveSettingsDebounced();
     });
 
-    // 初始化设置值
+        $('#llm_analysis_enabled').on('change', function () {
+        extension_settings[extensionName].llmAnalysis.enabled =
+            $(this).prop('checked');
+        saveSettingsDebounced();
+    });
+
+    $('#llm_analysis_endpoint').on('input', function () {
+        extension_settings[extensionName].llmAnalysis.endpoint =
+            $(this).val();
+        saveSettingsDebounced();
+    });
+
+    $('#llm_analysis_api_key').on('input', function () {
+        extension_settings[extensionName].llmAnalysis.apiKey =
+            $(this).val();
+        saveSettingsDebounced();
+    });
+
+    $('#llm_analysis_model').on('input', function () {
+        extension_settings[extensionName].llmAnalysis.model =
+            $(this).val();
+        saveSettingsDebounced();
+    });
+
+    // Initialize UI values
     updateUI();
 }
 
-// 设置变更处理函数
+// Extension button click handler
 function onExtensionButtonClick() {
-    // 直接访问扩展设置面板
+    // Open extension settings panel directly
     const extensionsDrawer = $('#extensions-settings-button .drawer-toggle');
 
-    // 如果抽屉是关闭的，点击打开它
+    // If the drawer is closed, open it
     if ($('#rm_extensions_block').hasClass('closedDrawer')) {
         extensionsDrawer.trigger('click');
     }
 
-    // 等待抽屉打开后滚动到我们的设置容器
+    // After drawer opens, scroll to our settings container
     setTimeout(() => {
-        // 找到我们的设置容器
+        // Find the settings container
         const container = $('#image_auto_generation_container');
         if (container.length) {
-            // 滚动到设置面板位置
+            // Scroll to the settings panel
             $('#rm_extensions_block').animate(
                 {
                     scrollTop:
@@ -210,44 +271,44 @@ function onExtensionButtonClick() {
                 500,
             );
 
-            // 使用SillyTavern原生的抽屉展开方式
-            // 检查抽屉内容是否可见
+            // Use SillyTavern's native drawer expansion
+            // Check if drawer content is visible
             const drawerContent = container.find('.inline-drawer-content');
             const drawerHeader = container.find('.inline-drawer-header');
 
-            // 只有当内容被隐藏时才触发展开
+            // Only trigger expansion if content is hidden
             if (drawerContent.is(':hidden') && drawerHeader.length) {
-                // 直接使用原生点击事件触发，而不做任何内部处理
+                // Trigger native click event directly
                 drawerHeader.trigger('click');
             }
         }
     }, 500);
 }
 
-// 初始化扩展
+// Initialize extension
 $(function () {
     (async function () {
-        // 获取设置HTML (只获取一次)
+        // Fetch settings HTML (only once)
         const settingsHtml = await $.get(
             `${extensionFolderPath}/settings.html`,
         );
 
-        // 添加扩展到菜单
+        // Add extension button to menu
         $('#extensionsMenu')
             .append(`<div id="auto_generation" class="list-group-item flex-container flexGap5">
             <div class="fa-solid fa-robot"></div>
             <span data-i18n="Image Auto Generation">Image Auto Generation</span>
         </div>`);
 
-        // 修改点击事件，打开设置面板而不是切换状态
+        // Clicking opens settings panel instead of toggling state
         $('#auto_generation').off('click').on('click', onExtensionButtonClick);
 
         await loadSettings();
 
-        // 创建设置 - 将获取的HTML传递给createSettings
+        // Create settings panel using fetched HTML
         await createSettings(settingsHtml);
 
-        // 确保设置面板可见时，设置值是正确的
+        // Ensure settings values are correct when panel is opened
         $('#extensions-settings-button').on('click', function () {
             setTimeout(() => {
                 updateUI();
@@ -255,15 +316,16 @@ $(function () {
         });
     })();
 });
-// 获取消息角色
+
+// Determine message role
 function getMesRole() {
-    // 确保对象路径存在
+    // Ensure required settings exist
     if (
         !extension_settings[extensionName] ||
         !extension_settings[extensionName].promptInjection ||
         !extension_settings[extensionName].promptInjection.position
     ) {
-        return 'system'; // 默认返回system角色
+        return 'system'; // Default role
     }
 
     switch (extension_settings[extensionName].promptInjection.position) {
@@ -278,18 +340,18 @@ function getMesRole() {
     }
 }
 
-// 监听CHAT_COMPLETION_PROMPT_READY事件以注入提示词
+// Listen for CHAT_COMPLETION_PROMPT_READY to inject prompt
 eventSource.on(
     event_types.CHAT_COMPLETION_PROMPT_READY,
     async function (eventData) {
         try {
-            // 确保设置对象和promptInjection对象都存在
+            // Ensure settings and promptInjection exist
             if (
                 !extension_settings[extensionName] ||
                 !extension_settings[extensionName].promptInjection ||
                 !extension_settings[extensionName].promptInjection.enabled ||
                 extension_settings[extensionName].insertType ===
-                    INSERT_TYPE.DISABLED
+                INSERT_TYPE.DISABLED
             ) {
                 return;
             }
@@ -301,38 +363,306 @@ eventSource.on(
             const role = getMesRole();
 
             console.log(
-                `[${extensionName}] 准备注入提示词: 角色=${role}, 深度=${depth}`,
+                `[${extensionName}] Preparing prompt injection: role=${role}, depth=${depth}`,
             );
             console.log(
-                `[${extensionName}] 提示词内容: ${prompt.substring(0, 50)}...`,
+                `[${extensionName}] Prompt preview: ${prompt.substring(0, 50)}...`,
             );
 
-            // 根据depth参数决定插入位置
+            // Determine insertion position based on depth
             if (depth === 0) {
-                // 添加到末尾
+                // Append to end
                 eventData.chat.push({ role: role, content: prompt });
-                console.log(`[${extensionName}] 提示词已添加到聊天末尾`);
+                console.log(`[${extensionName}] Prompt appended to chat`);
             } else {
-                // 从末尾向前插入
+                // Insert relative to the end of the chat
                 eventData.chat.splice(-depth, 0, {
                     role: role,
                     content: prompt,
                 });
                 console.log(
-                    `[${extensionName}] 提示词已插入到聊天中，从末尾往前第 ${depth} 个位置`,
+                    `[${extensionName}] Prompt inserted ${depth} messages from the end`,
                 );
             }
         } catch (error) {
-            console.error(`[${extensionName}] 提示词注入错误:`, error);
-            toastr.error(`提示词注入错误: ${error}`);
+            console.error(`[${extensionName}] Prompt injection error:`, error);
+            toastr.error(`Prompt injection error: ${error}`);
         }
     },
 );
 
-// 监听消息接收事件
+function analyzeImageQualification(reply) {
+    const text = (reply || '').trim();
+    if (!text) {
+        return {
+            qualifies: false,
+            reasons: {
+                empty: true,
+                hasAsterisks: false,
+                hasAction: false,
+                hasDescription: false,
+                hasEnvironment: false,
+                veryShort: true,
+                dialogueHeavy: false,
+            },
+        };
+    }
+
+    const hasAsterisks = /\*[^*]+\*/.test(text);
+
+    const hasAction =
+        /\b(looks|looking|leans|leaning|steps|walking|turns|turning|kneels|kneeling|smiles|smiling|blushes|reaches|pulls|stands|sits|moves|grips)\b/i.test(
+            text,
+        );
+
+    const hasDescription =
+        /\b(eyes|face|hair|hands|posture|expression|cheeks|body|shirt|skirt|dress)\b/i.test(
+            text,
+        );
+
+    const hasEnvironment =
+        /\b(room|office|bedroom|hallway|street|kitchen|window|desk|bed|couch|chair|lighting)\b/i.test(
+            text,
+        );
+
+    const veryShort = text.length < 100;
+
+    const quoteCount = (text.match(/"/g) || []).length;
+    const dialogueHeavy =
+        quoteCount >= 2 && !hasAsterisks && !hasAction && !hasDescription;
+
+    const qualifies =
+        (hasAsterisks || hasAction || hasDescription || hasEnvironment) &&
+        !dialogueHeavy &&
+        !veryShort;
+
+    return {
+        qualifies,
+        reasons: {
+            empty: false,
+            hasAsterisks,
+            hasAction,
+            hasDescription,
+            hasEnvironment,
+            veryShort,
+            dialogueHeavy,
+            length: text.length,
+            quoteCount,
+        },
+    };
+}
+
+function preprocessForImagePrompt(text) {
+    let cleaned = (text || '').trim();
+
+    // Remove quoted dialogue
+    cleaned = cleaned.replace(/"[^"]*"/g, ' ');
+    cleaned = cleaned.replace(/“[^”]*”/g, ' ');
+
+    // Normalize common POV words
+    cleaned = cleaned.replace(/\byou\b/gi, 'viewer');
+    cleaned = cleaned.replace(/\byour\b/gi, "viewer's");
+
+    // Collapse whitespace
+    cleaned = cleaned.replace(/\s+/g, ' ').trim();
+
+    return cleaned;
+}
+
+// Listen for incoming assistant messages
 eventSource.on(event_types.MESSAGE_RECEIVED, handleIncomingMessage);
+
+async function callRunpodChat(messages, options = {}) {
+    const settings = extension_settings[extensionName]?.llmAnalysis;
+    if (!settings?.endpoint || !settings?.model) {
+        throw new Error('LLM analysis endpoint or model is not configured');
+    }
+
+    const response = await fetch(settings.endpoint, {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json',
+            ...(settings.apiKey
+                ? { Authorization: `Bearer ${settings.apiKey}` }
+                : {}),
+        },
+        body: JSON.stringify({
+            input: {
+                model: settings.model,
+                messages,
+                max_tokens: options.max_tokens ?? settings.promptMaxTokens ?? 120,
+                temperature:
+                    options.temperature ?? settings.promptTemperature ?? 0.4,
+            },
+        }),
+    });
+
+    if (!response.ok) {
+        const text = await response.text();
+        throw new Error(`Runpod chat error ${response.status}: ${text}`);
+    }
+
+    const data = await response.json();
+    console.log(`[${extensionName}] Runpod raw response`, data);
+
+    if (data?.status && data.status !== 'COMPLETED') {
+        throw new Error(`Runpod request did not complete successfully: ${data.status}`);
+    }
+
+    const tokens = data?.output?.[0]?.choices?.[0]?.tokens;
+
+    if (Array.isArray(tokens)) {
+        return tokens.join('').trim();
+    }
+
+    return '';
+}
+
+function getRecentContextForImageAnalysis(context) {
+    const settings = extension_settings[extensionName]?.llmAnalysis || {};
+    const chat = context.chat || [];
+    const currentIndex = chat.length - 1;
+
+    const latestAssistant = chat[currentIndex]?.mes || '';
+    const latestUser =
+        settings.includeLastUserMessage && currentIndex >= 1
+            ? chat[currentIndex - 1]?.mes || ''
+            : '';
+
+    const previousAssistant =
+        settings.includePreviousAssistantMessage && currentIndex >= 2
+            ? chat[currentIndex - 2]?.mes || ''
+            : '';
+
+    return {
+        latestAssistant,
+        latestUser,
+        previousAssistant,
+    };
+}
+
+async function classifyReplyForImage(context) {
+    const settings = extension_settings[extensionName]?.llmAnalysis || {};
+    const { latestAssistant, latestUser, previousAssistant } =
+        getRecentContextForImageAnalysis(context);
+
+    const assistantText = preprocessForImagePrompt(latestAssistant);
+    const userText = preprocessForImagePrompt(latestUser);
+    const prevAssistantText = preprocessForImagePrompt(previousAssistant);
+
+    const classifierPrompt = `You are classifying whether a chat reply should trigger image generation.
+
+    Return only YES or NO.
+
+    Return YES if the reply contains a clear visual moment, including:
+    - scene or location change
+    - pose or body position change
+    - facial expression or body language
+    - interaction with objects or furniture
+    - clothing or appearance change
+    - request for a photo, selfie, or visual confirmation
+    - visually significant physical interaction
+    - romantic, suggestive, or sexual physical interaction
+    - environment or lighting detail
+    - other clearly visual narration
+
+    Return NO if the reply is mostly dialogue, internal thought, or lacks meaningful visual description.
+
+    Recent user context:
+    ${userText || '(none)'}
+
+    Previous assistant context:
+    ${prevAssistantText || '(none)'}
+
+    Current assistant reply:
+    ${assistantText}`;
+
+    const result = await callRunpodChat(
+        [
+            {
+                role: 'system',
+                content:
+                    'You are a strict binary classifier. Output only YES or NO.',
+            },
+            {
+                role: 'user',
+                content: classifierPrompt,
+            },
+        ],
+        {
+            max_tokens: settings.classifierMaxTokens ?? 8,
+            temperature: settings.classifierTemperature ?? 0.1,
+        },
+    );
+
+    const normalized = result.trim().toUpperCase();
+    return normalized.startsWith('YES');
+}
+
+async function generateImageTagFromReply(context) {
+    const settings = extension_settings[extensionName]?.llmAnalysis || {};
+    const { latestAssistant, latestUser, previousAssistant } =
+        getRecentContextForImageAnalysis(context);
+
+    const assistantText = preprocessForImagePrompt(latestAssistant);
+    const userText = preprocessForImagePrompt(latestUser);
+    const prevAssistantText = preprocessForImagePrompt(previousAssistant);
+
+    const promptBuilderRequest = `Select the single most visually representative moment from the assistant reply.
+
+    Describe that moment using short visual tags only.
+
+    Rules:
+    - comma separated
+    - 1–4 words per tag
+    - no sentences
+    - no explanations
+    - no markup
+    - no invented details
+    - only visible elements
+
+    Prefer static visual states over motion verbs.
+
+    Example output:
+    first person perspective, kneeling pose, looking up, open blouse, office desk, warm lighting
+
+    Recent user context:
+    ${userText || '(none)'}
+
+    Previous assistant context:
+    ${prevAssistantText || '(none)'}
+
+    Current assistant reply:
+    ${assistantText}`;
+
+    const sceneTags = await callRunpodChat(
+        [
+            {
+                role: 'system',
+                content:
+                    'You convert scene narration into concise visual tags for image generation.',
+            },
+            {
+                role: 'user',
+                content: promptBuilderRequest,
+            },
+        ],
+        {
+            max_tokens: settings.promptMaxTokens ?? 120,
+            temperature: settings.promptTemperature ?? 0.4,
+        },
+    );
+
+    return sceneTags.trim();
+}
+
 async function handleIncomingMessage() {
-    // 确保设置对象存在
+    // Prevent recursion during secondary analysis calls
+    if (isImageAnalysisCall) {
+        return;
+    }
+
+    // Ensure extension settings exist
     if (
         !extension_settings[extensionName] ||
         extension_settings[extensionName].insertType === INSERT_TYPE.DISABLED
@@ -343,148 +673,122 @@ async function handleIncomingMessage() {
     const context = getContext();
     const message = context.chat[context.chat.length - 1];
 
-    // 检查是否是AI消息
+    // Ensure this is an assistant message
     if (!message || message.is_user) {
         return;
     }
 
-    // 确保promptInjection对象和regex属性存在
-    if (
-        !extension_settings[extensionName].promptInjection ||
-        !extension_settings[extensionName].promptInjection.regex
-    ) {
-        console.error('Prompt injection settings not properly initialized');
+    // Avoid running if LLM analysis is disabled
+    if (!extension_settings[extensionName]?.llmAnalysis?.enabled) {
         return;
     }
 
-    // 使用正则表达式search
-    const imgTagRegex = regexFromString(
-        extension_settings[extensionName].promptInjection.regex,
-    );
-    // const testRegex = regexFromString(extension_settings[extensionName].promptInjection.regex);
-    let matches;
-    if (imgTagRegex.global) {
-        matches = [...message.mes.matchAll(imgTagRegex)];
-    } else {
-        const singleMatch = message.mes.match(imgTagRegex);
-        matches = singleMatch ? [singleMatch] : [];
+    let shouldGenerateImage = false;
+
+    try {
+        isImageAnalysisCall = true;
+
+        shouldGenerateImage = await classifyReplyForImage(context);
+
+        console.log(`[${extensionName}] classifier result`, {
+            shouldGenerateImage,
+            preview: message.mes.slice(0, 200),
+        });
+
+    } catch (error) {
+        console.error(`[${extensionName}] classifier failed`, error);
+        return;
+    } finally {
+        isImageAnalysisCall = false;
     }
-    console.log(imgTagRegex, matches);
-    if (matches.length > 0) {
-        // 延迟执行图片生成，确保消息首先显示出来
-        setTimeout(async () => {
-            try {
-                toastr.info(`Generating ${matches.length} images...`);
-                const insertType = extension_settings[extensionName].insertType;
 
-                // 在当前消息中插入图片
-                // 初始化message.extra
-                if (!message.extra) {
-                    message.extra = {};
-                }
+    if (!shouldGenerateImage) {
+        return;
+    }
 
-                // 初始化image_swipes数组
-                if (!Array.isArray(message.extra.image_swipes)) {
-                    message.extra.image_swipes = [];
-                }
+    let sceneTags = '';
 
-                // 如果已有图片，添加到swipes
-                if (
-                    message.extra.image &&
-                    !message.extra.image_swipes.includes(message.extra.image)
-                ) {
-                    message.extra.image_swipes.push(message.extra.image);
-                }
+    try {
+        isImageAnalysisCall = true;
 
-                // 获取消息元素用于稍后更新
-                const messageElement = $(
-                    `.mes[mesid="${context.chat.length - 1}"]`,
-                );
+        sceneTags = await generateImageTagFromReply(context);
 
-                // 处理每个匹配的图片标签
-                for (const match of matches) {
-                    const prompt =
-                        typeof match?.[1] === 'string' ? match[1] : '';
-                    if (!prompt.trim()) {
-                        continue;
-                    }
+        console.log(`[${extensionName}] scene builder output`, sceneTags);
 
-                    // @ts-ignore
-                    const result = await SlashCommandParser.commands[
-                        'sd'
-                    ].callback(
-                        {
-                            quiet:
-                                insertType === INSERT_TYPE.NEW_MESSAGE
-                                    ? 'false'
-                                    : 'true',
-                        },
-                        prompt,
-                    );
-                    // 统一插入到extra里
-                    if (insertType === INSERT_TYPE.INLINE) {
-                        let imageUrl = result;
-                        if (
-                            typeof imageUrl === 'string' &&
-                            imageUrl.trim().length > 0
-                        ) {
-                            // 添加图片到swipes数组
-                            message.extra.image_swipes.push(imageUrl);
+    } catch (error) {
+        console.error(`[${extensionName}] scene builder failed`, error);
+        return;
+    } finally {
+        isImageAnalysisCall = false;
+    }
 
-                            // 设置第一张图片为主图片，或更新为最新生成的图片
-                            message.extra.image = imageUrl;
-                            message.extra.title = prompt;
-                            message.extra.inline_image = true;
+    if (!sceneTags || !sceneTags.trim()) {
+        console.warn(`[${extensionName}] empty scene tags`);
+        return;
+    }
 
-                            // 更新UI
-                            appendMediaToMessage(message, messageElement);
+    // Clean LLM output
+    const prompt = sceneTags
+        .replace(/^["'\s]+|["'\s]+$/g, '')
+        .replace(/\n/g, ' ')
+        .trim();
 
-                            // 保存聊天记录
-                            await context.saveChat();
-                        }
-                    } else if (insertType === INSERT_TYPE.REPLACE) {
-                        let imageUrl = result;
-                        if (
-                            typeof imageUrl === 'string' &&
-                            imageUrl.trim().length > 0
-                        ) {
-                            // Find the original image tag in the message
-                            const originalTag =
-                                typeof match?.[0] === 'string' ? match[0] : '';
-                            if (!originalTag) {
-                                continue;
-                            }
-                            // Replace it with an actual image tag
-                            const escapedUrl = escapeHtmlAttribute(imageUrl);
-                            const escapedPrompt = escapeHtmlAttribute(prompt);
-                            const newImageTag = `<img src="${escapedUrl}" title="${escapedPrompt}" alt="${escapedPrompt}">`;
-                            message.mes = message.mes.replace(
-                                originalTag,
-                                newImageTag,
-                            );
+    console.log(`[${extensionName}] final SD prompt`, prompt);
 
-                            // Update the message display using updateMessageBlock
-                            updateMessageBlock(
-                                context.chat.length - 1,
-                                message,
-                            );
-                            await eventSource.emit(
-                                event_types.MESSAGE_UPDATED,
-                                context.chat.length - 1,
-                            );
+    const insertType = extension_settings[extensionName].insertType;
 
-                            // Save the chat
-                            await context.saveChat();
-                        }
-                    }
-                }
-                toastr.success(
-                    `${matches.length} images generated successfully`,
-                );
-            } catch (error) {
-                toastr.error(`Image generation error: ${error}`);
-                console.error('Image generation error:', error);
+    try {
+
+        toastr.info(`Generating image...`);
+
+        // Run SillyTavern image generation
+        // @ts-ignore
+        const result = await SlashCommandParser.commands['sd'].callback(
+            {
+                quiet:
+                    insertType === INSERT_TYPE.NEW_MESSAGE
+                        ? 'false'
+                        : 'true',
+            },
+            prompt,
+        );
+
+        if (!result) {
+            console.warn(`[${extensionName}] SD returned no image`);
+            return;
+        }
+
+        if (insertType === INSERT_TYPE.INLINE) {
+
+            if (!message.extra) {
+                message.extra = {};
             }
-        }, 0); //防阻塞UI渲染
+
+            if (!Array.isArray(message.extra.image_swipes)) {
+                message.extra.image_swipes = [];
+            }
+
+            message.extra.image_swipes.push(result);
+            message.extra.image = result;
+            message.extra.title = prompt;
+            message.extra.inline_image = true;
+
+            const messageElement = $(
+                `.mes[mesid="${context.chat.length - 1}"]`,
+            );
+
+            appendMediaToMessage(message, messageElement);
+
+            await context.saveChat();
+
+        }
+
+        toastr.success(`Image generated`);
+
+    } catch (error) {
+
+        toastr.error(`Image generation error: ${error}`);
+        console.error(`[${extensionName}] SD generation failed`, error);
+
     }
 }
