@@ -3,41 +3,139 @@
         <b data-i18n="Image Auto Generation">Image Auto Generation</b>
         <div class="inline-drawer-icon fa-solid fa-circle-chevron-down down"></div>
     </div>
+
     <div class="inline-drawer-content">
+
         <div class="flex-container flexnowrap">
-            <label for="image_generation_insert_type" class="flex1" data-i18n="Image Insert Type">Image Insert Type</label>
+            <label for="image_generation_insert_type" class="flex1" data-i18n="Image Insert Type">
+                Image Insert Type
+            </label>
+
             <select id="image_generation_insert_type" class="text_pole widthNatural margin0">
-                <option data-i18n="Insert In Current Message" value="inline">Insert In Current Message</option>
-                <option data-i18n="Inline Replace Mode" value="replace">Inline Replace Mode</option>
-                <option data-i18n="Create New Message" value="new">Create New Message</option>
-                <option data-i18n="Disable" value="disabled">Disable</option>
+                <option value="inline">Insert In Current Message</option>
+                <option value="replace">Inline Replace Mode</option>
+                <option value="new">Create New Message</option>
+                <option value="disabled">Disable</option>
             </select>
         </div>
+
+        <hr class="sysHR">
+
         <div class="flex-container flexnowrap">
-            <label class="checkbox_label" for="prompt_injection_enabled">
-                <span data-i18n="Enable Prompt Injection">Enable Prompt Injection</span>
-                <input type="checkbox" id="prompt_injection_enabled" class="checkbox">
+            <label class="checkbox_label" for="llm_analysis_enabled">
+                <span>Enable LLM Scene Analysis</span>
+                <input type="checkbox" id="llm_analysis_enabled" class="checkbox">
             </label>
         </div>
-        <div class="">
-            <div><label for="prompt_injection_text" class="flex1" data-i18n="Prompt Template">Prompt Template</label></div>
-            <textarea id="prompt_injection_text" class="text_pole textarea_compact" rows="3" placeholder="Prompt that instruct AI to generate image tag"></textarea>
+
+        <div>
+            <div>
+                <label for="llm_analysis_endpoint" class="flex1">
+                    Runpod Endpoint
+                </label>
+            </div>
+
+            <input id="llm_analysis_endpoint" class="text_pole" type="text"
+                placeholder="https://api.runpod.ai/v2/YOUR_ENDPOINT/runsync">
         </div>
-        <div class="">
-            <div><label for="prompt_injection_regex" class="flex1" data-i18n="Regex">Regex</label></div>
-            <textarea id="prompt_injection_regex" class="text_pole textarea_compact" rows="2" placeholder="Your regex here"></textarea>
+
+        <div>
+            <div>
+                <label for="llm_analysis_api_key" class="flex1">
+                    Runpod API Key
+                </label>
+            </div>
+
+            <input id="llm_analysis_api_key" class="text_pole" type="text" placeholder="rpa_xxxxxxxxx">
         </div>
+
+        <div>
+            <div>
+                <label for="llm_analysis_model" class="flex1">
+                    LLM Model
+                </label>
+            </div>
+
+            <input id="llm_analysis_model" class="text_pole" type="text" placeholder="thedrummer/cydonia-24b-v4.3">
+        </div>
+
+        <hr class="sysHR">
+
         <div class="flex-container flexnowrap">
-            <label for="prompt_injection_position" class="flex1" data-i18n="Position">Position</label>
-            <select id="prompt_injection_position" class="text_pole widthNatural margin0">
-                <option value="deep_system" data-i18n="at Depth System">@D ⚙️</option>
-                <option value="deep_user" data-i18n="at Depth User">@D 👤</option>
-                <option value="deep_assistant" data-i18n="at Depth AI">@D 🤖</option>
+            <label class="checkbox_label" for="llm_analysis_classifier_separate">
+                <span>Use Separate Classifier Backend</span>
+                <input type="checkbox" id="llm_analysis_classifier_separate" class="checkbox">
+            </label>
+        </div>
+
+        <div>
+            <div>
+                <label for="llm_analysis_classifier_backend" class="flex1">
+                    Classifier Backend
+                </label>
+            </div>
+
+            <select id="llm_analysis_classifier_backend" class="text_pole widthNatural margin0">
+                <option value="kobold">KoboldCPP</option>
+                <option value="runpod">Runpod</option>
+                <option value="openai">OpenAI-Compatible</option>
             </select>
         </div>
-        <div class="flex-container flexnowrap">
-            <label for="prompt_injection_depth" class="flex1" data-i18n="Depth">Depth</label>
-            <input id="prompt_injection_depth" class="text_pole widthUnset" type="number" min="0" max="100">
+
+        <div>
+            <div>
+                <label for="llm_analysis_classifier_endpoint" class="flex1">
+                    Classifier Endpoint
+                </label>
+            </div>
+
+            <input id="llm_analysis_classifier_endpoint" class="text_pole" type="text"
+                placeholder="http://127.0.0.1:5001/v1/chat/completions">
         </div>
+
+        <div>
+            <div>
+                <label for="llm_analysis_classifier_api_key" class="flex1">
+                    Classifier API Key
+                </label>
+            </div>
+
+            <input id="llm_analysis_classifier_api_key" class="text_pole" type="text"
+                placeholder="Optional for local KoboldCPP">
+        </div>
+
+        <div>
+            <div>
+                <label for="llm_analysis_classifier_model" class="flex1">
+                    Classifier Model
+                </label>
+            </div>
+
+            <input id="llm_analysis_classifier_model" class="text_pole" type="text"
+                placeholder="Qwen/Qwen2.5-7B-Instruct">
+        </div>
+
+        <div>
+            <div>
+                <label for="llm_analysis_classifier_max_tokens" class="flex1">
+                    Classifier Max Tokens
+                </label>
+            </div>
+
+            <input id="llm_analysis_classifier_max_tokens" class="text_pole" type="number" min="1" step="1"
+                placeholder="8">
+        </div>
+
+        <div>
+            <div>
+                <label for="llm_analysis_classifier_temperature" class="flex1">
+                    Classifier Temperature
+                </label>
+            </div>
+
+            <input id="llm_analysis_classifier_temperature" class="text_pole" type="number" min="0" max="2" step="0.1"
+                placeholder="0.1">
+        </div>
+
     </div>
-</div> 
+</div>
