@@ -656,10 +656,6 @@ async function callChat(messages, options = {}) {
         return await callKoboldBackend(endpoint, apiKey, model, messages, options);
     }
 
-    if (backend === 'openai') {
-        return await callOpenAIBackend(endpoint, apiKey, model, messages, options);
-    }
-
     throw new Error(`Unsupported backend: ${backend}`);
 }
 
@@ -742,7 +738,7 @@ async function classifyReplyForImage(context) {
             },
         ],
         {
-            useClassifierBackend: true,
+            useClassifierBackend: settings.classifierUseSeparateBackend === true,
             max_tokens: settings.classifierMaxTokens ?? 8,
             temperature: settings.classifierTemperature ?? 0.1,
         },
@@ -756,6 +752,7 @@ async function classifyReplyForImage(context) {
 
 async function generateImageTagFromReply(context) {
     const settings = extension_settings[extensionName]?.llmAnalysis || {};
+    if (isNSFW) return true;
     const { latestAssistant, latestUser, previousAssistant } =
         getRecentContextForImageAnalysis(context);
 
@@ -763,32 +760,52 @@ async function generateImageTagFromReply(context) {
     const userText = preprocessForImagePrompt(latestUser);
     const prevAssistantText = preprocessForImagePrompt(previousAssistant);
 
-    const promptBuilderRequest = `Select the single most visually representative moment from the assistant reply.
+    const promptBuilderRequest = `Select the single most visually representative moment from the CURRENT assistant reply.
 
-    Describe that moment using short visual tags only.
+        Convert that moment into concise visual tags for image generation.
 
-    Rules:
-    - comma separated
-    - 1–4 words per tag
-    - no sentences
-    - no explanations
-    - no markup
-    - no invented details
-    - only visible elements
+        Base the tags primarily on the CURRENT assistant reply.
+        Use Recent user context and Previous assistant context only to resolve ambiguity or maintain scene continuity.
 
-    Prefer static visual states over motion verbs.
+        Rules:
+        - comma separated
+        - 1–4 words per tag
+        - 6–12 tags total
+        - no sentences
+        - no explanations
+        - no markup
+        - only visible elements
+        - do not invent details not clearly visible
 
-    Example output:
-    first person perspective, kneeling pose, looking up, open blouse, office desk, warm lighting
+        Perspective rule:
+        If the narration addresses "you" or is written from the assistant's point of view,
+        include the tag: first person perspective.
+        Otherwise use third person perspective if the scene is externally observed.
 
-    Recent user context:
-    ${userText || '(none)'}
+        Prefer body position tags like: kneeling pose, sitting pose, leaning pose, straddling pose.
 
-    Previous assistant context:
-    ${prevAssistantText || '(none)'}
+        Tag priority order:
+        1. camera or perspective
+        2. body position or pose
+        3. facial expression or gaze
+        4. clothing state or exposure
+        5. physical contact or interaction
+        6. environment or furniture
+        7. lighting or atmosphere
 
-    Current assistant reply:
-    ${assistantText}`;
+        Prefer static visual states over motion verbs.
+
+        Example output:
+        first person perspective, kneeling pose, looking up, open blouse, office desk, warm lighting
+
+        Recent user context:
+        ${userText || '(none)'}
+
+        Previous assistant context:
+        ${prevAssistantText || '(none)'}
+
+        Current assistant reply:
+        ${assistantText}`;
 
     const sceneTags = await callChat(
         [
@@ -804,11 +821,11 @@ async function generateImageTagFromReply(context) {
         ],
         {
             max_tokens: settings.promptMaxTokens ?? 120,
-            temperature: settings.promptTemperature ?? 0.4,
+            temperature: settings.promptTemperature ?? 0.2,
         },
     );
 
-    return sceneTags.trim();
+   return sceneTags.trim().replace(/^["']|["']$/g, '');
 }
 
 async function handleIncomingMessage() {
