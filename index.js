@@ -391,67 +391,6 @@ eventSource.on(
     },
 );
 
-function analyzeImageQualification(reply) {
-    const text = (reply || '').trim();
-    if (!text) {
-        return {
-            qualifies: false,
-            reasons: {
-                empty: true,
-                hasAsterisks: false,
-                hasAction: false,
-                hasDescription: false,
-                hasEnvironment: false,
-                veryShort: true,
-                dialogueHeavy: false,
-            },
-        };
-    }
-
-    const hasAsterisks = /\*[^*]+\*/.test(text);
-
-    const hasAction =
-        /\b(looks|looking|leans|leaning|steps|walking|turns|turning|kneels|kneeling|smiles|smiling|blushes|reaches|pulls|stands|sits|moves|grips)\b/i.test(
-            text,
-        );
-
-    const hasDescription =
-        /\b(eyes|face|hair|hands|posture|expression|cheeks|body|shirt|skirt|dress)\b/i.test(
-            text,
-        );
-
-    const hasEnvironment =
-        /\b(room|office|bedroom|hallway|street|kitchen|window|desk|bed|couch|chair|lighting)\b/i.test(
-            text,
-        );
-
-    const veryShort = text.length < 100;
-
-    const quoteCount = (text.match(/"/g) || []).length;
-    const dialogueHeavy =
-        quoteCount >= 2 && !hasAsterisks && !hasAction && !hasDescription;
-
-    const qualifies =
-        (hasAsterisks || hasAction || hasDescription || hasEnvironment) &&
-        !dialogueHeavy &&
-        !veryShort;
-
-    return {
-        qualifies,
-        reasons: {
-            empty: false,
-            hasAsterisks,
-            hasAction,
-            hasDescription,
-            hasEnvironment,
-            veryShort,
-            dialogueHeavy,
-            length: text.length,
-            quoteCount,
-        },
-    };
-}
-
 function preprocessForImagePrompt(text) {
     let cleaned = (text || '').trim();
 
@@ -568,42 +507,26 @@ function getRecentContextForImageAnalysis(context) {
 
 async function classifyReplyForImage(context) {
     const settings = extension_settings[extensionName]?.llmAnalysis || {};
-    const { latestAssistant, latestUser, previousAssistant } =
+    const { latestAssistant } =
         getRecentContextForImageAnalysis(context);
 
     const assistantText = preprocessForImagePrompt(latestAssistant);
-    const userText = preprocessForImagePrompt(latestUser);
-    const prevAssistantText = preprocessForImagePrompt(previousAssistant);
 
-    const classifierPrompt = `Determine whether the assistant reply contains visible narration that could be illustrated with an image.
+    const classifierPrompt = `Does the assistant reply contain visible narration that could be illustrated?
 
-    Text between *asterisks* represents visible narration.
+    Text between *asterisks* is visible narration.
 
-    Return YES if the reply contains any visible action or description, including:
-    - body movement
-    - pose change
-    - facial expression
-    - gesture or body language
-    - interaction with objects or furniture
-    - environment or lighting description
-    - characters moving within a scene
-    - physical or sexual interaction between characters
+    Return YES if the assistant reply contains any visible action, pose, expression, gesture, interaction with objects, or scene detail.
 
-    Return NO only if the reply is pure dialogue with no visible narration.
+    Return NO only if the assistant reply is pure dialogue with no visible narration.
 
-    Output exactly one word:
+    Reply:
+    ${assistantText}
+
+    Answer with exactly one word:
     YES
     or
-    NO
-
-    Recent user context:
-    ${userText || '(none)'}
-
-    Previous assistant context:
-    ${prevAssistantText || '(none)'}
-
-    Current assistant reply:
-    ${assistantText}`;
+    NO`;
 
     const result = await callRunpodChat(
         [
