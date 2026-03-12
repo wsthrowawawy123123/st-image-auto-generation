@@ -502,7 +502,7 @@ async function callRunpodChat(messages, options = {}) {
         throw new Error(`Runpod chat error ${response.status}: ${text}`);
     }
 
-    const data = await response.json();
+    let data = await response.json();
     console.log(`[${extensionName}] Runpod raw response`, data);
 
     let retries = 0;
