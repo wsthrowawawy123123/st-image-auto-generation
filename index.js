@@ -8,7 +8,6 @@ import {
     saveSettingsDebounced,
     eventSource,
     event_types,
-    updateMessageBlock,
 } from '../../../../script.js';
 import { appendMediaToMessage } from '../../../../script.js';
 import { SlashCommandParser } from '../../../slash-commands/SlashCommandParser.js';
@@ -27,7 +26,7 @@ const INSERT_TYPE = {
 };
 
 let isImageAnalysisCall = false;
-
+let lastImageGeneratedAtMessageIndex = -Infinity;
 let sceneMemory = {
     location: '',
     environment: '',
@@ -181,18 +180,30 @@ async function loadSettings() {
 
         // Ensure llmAnalysis object exists
         if (!extension_settings[extensionName].llmAnalysis) {
-            extension_settings[extensionName].llmAnalysis =
-                defaultSettings.llmAnalysis;
+            extension_settings[extensionName].llmAnalysis = structuredClone(defaultSettings.llmAnalysis);
         } else {
-            // Ensure all llmAnalysis sub-properties exist
-            const defaultLlmAnalysis = defaultSettings.llmAnalysis;
-            for (const key in defaultLlmAnalysis) {
+            const llm = extension_settings[extensionName].llmAnalysis;
+            const defaults = defaultSettings.llmAnalysis;
+
+            for (const key in defaults) {
+                if (llm[key] === undefined) {
+                    llm[key] = structuredClone(defaults[key]);
+                    continue;
+                }
+
                 if (
-                    extension_settings[extensionName].llmAnalysis[key] ===
-                    undefined
+                    defaults[key] &&
+                    typeof defaults[key] === 'object' &&
+                    !Array.isArray(defaults[key]) &&
+                    llm[key] &&
+                    typeof llm[key] === 'object' &&
+                    !Array.isArray(llm[key])
                 ) {
-                    extension_settings[extensionName].llmAnalysis[key] =
-                        defaultLlmAnalysis[key];
+                    for (const subKey in defaults[key]) {
+                        if (llm[key][subKey] === undefined) {
+                            llm[key][subKey] = structuredClone(defaults[key][subKey]);
+                        }
+                    }
                 }
             }
         }
@@ -685,17 +696,17 @@ function getRecentContextForImageAnalysis(context) {
 }
 
 function isOnImageCooldown(context) {
-    const settings = extension_settings[extensionName] || {};
-    const cooldown = settings.cooldown || {};
+  const llmSettings = extension_settings[extensionName]?.llmAnalysis || {};
+  const cooldown = llmSettings.cooldown || {};
 
-    if (!cooldown.enabled) {
-        return false;
-    }
+  if (!cooldown.enabled) {
+    return false;
+  }
 
-    const currentIndex = (context.chat || []).length - 1;
-    const minMessagesBetweenImages = Number(cooldown.messages) || 0;
+  const currentIndex = (context.chat || []).length - 1;
+  const minMessagesBetweenImages = Number(cooldown.messages) || 0;
 
-    return (currentIndex - lastImageGeneratedAtMessageIndex) < minMessagesBetweenImages;
+  return (currentIndex - lastImageGeneratedAtMessageIndex) < minMessagesBetweenImages;
 }
 
 function markImageGenerated(context) {
@@ -916,18 +927,19 @@ async function generateImageTagFromReply(context) {
     const userText = preprocessForImagePrompt(latestUser);
     const prevAssistantText = preprocessForImagePrompt(previousAssistant);
 
-    const memoryBlock = extension_settings[extensionName]?.sceneMemory?.enabled
-        ? `Current scene memory:
-            - location: ${sceneMemory.location || '(unknown)'}
-            - environment: ${sceneMemory.environment || '(unknown)'}
-            - assistant pose: ${sceneMemory.assistantPose || '(unknown)'}
-            - assistant clothing: ${sceneMemory.assistantClothing || '(unknown)'}
-            - assistant expression: ${sceneMemory.assistantExpression || '(unknown)'}
-            - interaction: ${sceneMemory.interaction || '(unknown)'}
-            - props: ${sceneMemory.props?.length ? sceneMemory.props.join(', ') : '(none)'}
-            - lighting: ${sceneMemory.lighting || '(unknown)'}
-            - mood: ${sceneMemory.mood || '(unknown)'}`
-        : 'Current scene memory: (disabled)';
+    const memoryBlock =
+        extension_settings[extensionName]?.llmAnalysis?.sceneMemory?.enabled
+            ? `Current scene memory:
+                - location: ${sceneMemory.location || '(unknown)'}
+                - environment: ${sceneMemory.environment || '(unknown)'}
+                - assistant pose: ${sceneMemory.assistantPose || '(unknown)'}
+                - assistant clothing: ${sceneMemory.assistantClothing || '(unknown)'}
+                - assistant expression: ${sceneMemory.assistantExpression || '(unknown)'}
+                - interaction: ${sceneMemory.interaction || '(unknown)'}
+                - props: ${sceneMemory.props?.length ? sceneMemory.props.join(', ') : '(none)'}
+                - lighting: ${sceneMemory.lighting || '(unknown)'}
+                - mood: ${sceneMemory.mood || '(unknown)'}`
+            : 'Current scene memory: (disabled)';
 
     const promptBuilderRequest = `Select the single most visually representative moment from the CURRENT assistant reply.
 

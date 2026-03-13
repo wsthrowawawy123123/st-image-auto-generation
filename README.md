@@ -1,86 +1,226 @@
-# 酒馆图像自动生成插件
+# ST Image Auto Generation
 
-[EN](./README_EN.md)
+A **SillyTavern extension** that automatically generates images during roleplay conversations.
 
+The extension detects when an image should be generated and then calls SillyTavern’s image generation pipeline (e.g. Stable Diffusion) to create and insert the image into chat.
 
-### 描述
+It supports multiple insertion styles, prompt injection, and optional LLM-powered scene analysis.
 
-当检测到AI消息中的 `<pic prompt="...">` 标签时，此扩展会自动生成图像。它与SillyTavern的图像生成功能无缝集成，允许您的AI角色在回复中包含图像。
+---
 
-**请确保你酒馆自带的生图功能能够使用**
+# Core Idea
 
-**默认会在消息列表的最后注入相关生图提示词，可以在设置里更改**
+The extension works by detecting **image prompts embedded in model replies** and converting them into actual generated images.
 
-### 功能
+Typical flow:
 
-- 自动检测并处理AI消息中的图像生成请求
-- 三种插入模式：
-  - 插入当前消息（会插入酒馆自带的extra数组中，支持图片控件功能）
-  - 行内替换模式（会直接替换相应的标签，不支持图片控件功能）
-  - 创建新消息（酒馆默认的生图方法，会直接创建一条新的消息显示图片，兼容性最好）
-- 扩展菜单中简单的开关
-- 扩展设置面板中的配置选项
-- 自定义提示词模板和正则
+1. Inject a prompt telling the model it can emit image tags
+2. Model outputs a tag such as:
 
-### 推荐设置
-
-如果你只想要一次生成一张图，那用默认的prompt就行了，也可以在最后增加一些生图指导，让LLM更加了解如何写好prompt。
-
-如果你想要一次生成多张图，可以用以下的提示和正则(仅供参考)：
-
-```
-prompt: <image_generation>You must insert at most three <pic prompt="example prompt"> in the reply. Prompts are used for stable diffusion image generation, based on the plot and character to output appropriate prompts to generate captivating images.</image_generation>
-regexp: /<pic[^>]*\sprompt="([^"]*)"[^>]*?>/g
+```text
+<pic prompt="girl sitting at a cafe table, sunlight through window">
 ```
 
-### 常见问题
+3. The extension detects the tag
+4. The prompt is sent to the image generation system
+5. The generated image is inserted into the conversation
 
-**NovelAI的key怎么设置？**
+---
 
-- 需要在设置聊天补全的那个地方设置，下拉就可以看到NovelAI的选项了。
+# Image Insertion Modes
 
-**需要世界书吗？**
+The extension supports several ways to insert generated images.
 
-- 不需要，插件内置了prompt，可以自定义，也可以将之前世界书的生图指导复制进去。
+### Inline
 
-**为什么无法自动生图？**
+The image is inserted directly inside the message where the tag appeared.
 
-- 检查一下正则表达式，确定正则表达式能够匹配到AI返回的标签。麻烦查看下正则是不是`<pic[^>]*\sprompt="([^"]*)"[^>]*?>`，错误的正则可能少了一个斜杠变成`<pic[^>]*sprompt="([^"]*)"[^>]*?>`。如果你修改了提示模板的话，需要将正则改成对应上你提示模板里要求的标签。
+### Replace
 
-### 前置
+The `<pic>` tag in the message is replaced with the generated image.
 
-拓展 -> 图像生成 -> 配置好API<br>
+### New Message
 
-### 安装
+The image is generated as a separate chat message.
 
-拓展 -> 安装拓展 -> 输入 https://github.com/wickedcode01/st-image-auto-generation
+### Disabled
 
-### 使用方法
+Image generation is turned off.
 
-1. 点击扩展菜单中的"自动生成图片"启用扩展
-2. 在扩展设置面板中配置图像插入类型
-3. 当您的AI在消息中包含 `<pic prompt="...">` 时，扩展将自动生成图像
-4. 【可选】根据选择的生图模型，在提示词模板内提供一些好的例子，让AI参考。
+---
 
-示例：
+# Prompt Injection
 
+The extension can automatically inject a hidden instruction into the conversation telling the model how to emit image tags.
+
+Example injected instruction:
+
+```text
+When the scene becomes visually interesting, include an image tag in this format:
+
+<pic prompt="visual description here">
 ```
-<pic prompt="score_9, score_8_up, score_7_up, source_anime,
- 1girl, woman, kitsune girl, golden bands, blushing, heart, cowboy shot, beautiful face, thick eyelashes, glowing white eyes, fox ears, long flowy silver hair, cute smile, dark eyeshadow, glowing shoulders tattoos, glowing tattoos, floral decoration in hair, night time, shinning moon, blush, white floral kimono, large breasts, cleavage,japanese theme,">
+
+This allows the model to decide when images should appear.
+
+Injection settings include:
+
+* depth in conversation
+* insertion role
+* regex for tag detection
+* custom prompt template
+
+---
+
+# Regex Tag Detection
+
+The extension uses a configurable regex to detect image prompts inside assistant replies.
+
+Example default format:
+
+```text
+<pic prompt="description">
 ```
 
-### 注意事项
+The prompt inside the tag is extracted and passed to the image generation system.
 
-- 提示词注入和正则可以解耦，你完全可以用世界书或其他插件实现更高级的提示词注入（如基于上下文扫描的条件注入）
-- 正则的写法必须满足将提示词作为第一个捕获组，即用括号包裹，例如：`<pic[^>]*\sprompt="([^"]*)"[^>]*?>`
-- 检查你的正则和提示词是否能够匹配上，如果匹配不上是无法触发自动生图的。
+---
 
-### 截图
+# Feature Branch: Scene Probability (Experimental)
 
-![](./dist/Screenshot%202025-05-25%20151108.png)
-![](./dist/Screenshot%202025-05-25%20144831.png)
-你可以自定义提示词模板和正则表达式<br>
-![settings](./dist/screenshot2.png)
+The `feat/sceneProbability` branch introduces an experimental **LLM-driven scene analysis system**.
 
-请确保在开始前配置好相关的生图模型<br>
-![](./dist/Screenshot%202025-05-23%20141239.png)
+Instead of relying solely on the model emitting `<pic>` tags, the extension can analyze each reply and determine whether the scene is visually important enough to generate an image.
+
+This reduces spam images and improves scene continuity.
+
+## Scene Classification
+
+Each assistant reply is analyzed and categorized.
+
+Example output:
+
+```json
+{
+  "generate": true,
+  "category": "pose_change",
+  "weight": 0.72
+}
+```
+
+Possible categories include:
+
+* nsfw_action
+* selfie_request
+* location_change
+* pose_change
+* physical_interaction
+* food_or_object_focus
+* ambient_scene
+* dialogue_only
+
+Pure dialogue usually results in:
+
+```text
+generate: false
+weight: 0
+```
+
+---
+
+## Scene Memory
+
+The experimental branch introduces **persistent scene memory** so that images stay visually consistent across messages.
+
+Tracked attributes include:
+
+* location
+* environment
+* assistant pose
+* assistant clothing
+* assistant expression
+* interaction
+* props
+* lighting
+* mood
+
+Each reply can produce a **scene patch** that updates the current memory.
+
+Location changes automatically reset environment context.
+
+---
+
+## LLM Image Prompt Generation
+
+Instead of requiring the model to output `<pic>` tags, the extension can generate prompts automatically.
+
+The system:
+
+1. Analyzes the assistant reply
+2. Reads the current scene memory
+3. Selects the most visually representative moment
+4. Produces a concise visual prompt
+
+Example generated prompt:
+
+```text
+1girl, sitting at cafe table, sunlight through window, coffee mug, relaxed smile
+```
+
+---
+
+## Separate Classifier Backend
+
+Scene classification can run on a **separate LLM backend**.
+
+Supported backends include:
+
+* KoboldCPP
+* RunPod
+* OpenAI-compatible APIs
+
+This allows you to run lightweight classification models separately from your main RP model.
+
+---
+
+# Configuration
+
+The extension exposes settings for:
+
+### Image generation
+
+* insert mode
+* prompt injection
+* tag regex
+* injection depth
+
+### Scene analysis (experimental branch)
+
+* enable scene analysis
+* classifier backend
+* API endpoint
+* model name
+* temperature
+* token limits
+
+---
+
+# Requirements
+
+* SillyTavern
+* An image generation backend (Stable Diffusion or compatible)
+* Optional: an LLM endpoint for scene analysis
+
+---
+
+# Status
+
+Core tag-based generation is stable.
+
+The **scene probability system is experimental** and may change as the feature is developed.
+
+---
+
+# License
+
+Same license as the upstream project.
