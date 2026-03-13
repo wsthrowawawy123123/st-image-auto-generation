@@ -453,6 +453,7 @@ $(function () {
         $('#extensions-settings-button').on('click', function () {
             setTimeout(() => {
                 updateUI();
+                renderPromptPhraseItems();
             }, 200);
         });
     })();
