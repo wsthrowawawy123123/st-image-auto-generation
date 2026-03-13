@@ -75,6 +75,7 @@ function escapeHtml(value) {
 }
 
 function renderPromptPhraseItems() {
+    console.log('renderPromptPhraseItems called');
     const container = $('#prompt_items_container');
     if (!container.length) return;
 
@@ -85,74 +86,39 @@ function renderPromptPhraseItems() {
         return;
     }
 
-    const html = phrases.map((item, index) => {
-        const rowId = `prompt_phrase_row_${index}`;
-        const checkboxId = `prompt_phrase_enabled_${index}`;
-        const inputId = `prompt_phrase_text_${index}`;
-        const labelId = `prompt_phrase_label_${index}`;
-
-        return `
-            <div
-                id="${rowId}"
-                class="prompt_phrase_row flex-container flexnowrap flexGap10 marginTop5"
-                data-index="${index}"
-                data-id="${escapeHtml(item.id)}"
-            >
-                <div class="prompt_phrase_toggle">
-                    <input
-                        type="checkbox"
-                        id="${checkboxId}"
-                        class="checkbox prompt_phrase_enabled"
-                        autocomplete="off"
-                        ${item.enabled ? 'checked' : ''}
-                    >
-                    <label for="${checkboxId}" class="sr-only">
-                        Enable prompt phrase ${index + 1}
-                    </label>
-                </div>
-
-                <label id="${labelId}" for="${inputId}" class="sr-only">
-                    Prompt phrase ${index + 1}
-                </label>
-
+    const html = phrases.map((item, index) => `
+        <div class="prompt_phrase_row flex-container flexnowrap flexGap10 marginTop5" data-index="${index}">
+            <div class="prompt_phrase_toggle">
                 <input
-                    type="text"
-                    id="${inputId}"
-                    class="text_pole flex1 prompt_phrase_text"
-                    value="${escapeHtml(item.text)}"
-                    placeholder="Enter prompt phrase"
+                    type="checkbox"
+                    id="prompt_phrase_enabled_${index}"
+                    class="checkbox prompt_phrase_enabled"
                     autocomplete="off"
-                    aria-labelledby="${labelId}"
+                    ${item.enabled ? 'checked' : ''}
                 >
-
-                <button
-                    type="button"
-                    id="prompt_phrase_move_up_${index}"
-                    class="menu_button prompt_phrase_move_up"
-                    ${index === 0 ? 'disabled' : ''}
-                >
-                    Up
-                </button>
-
-                <button
-                    type="button"
-                    id="prompt_phrase_move_down_${index}"
-                    class="menu_button prompt_phrase_move_down"
-                    ${index === phrases.length - 1 ? 'disabled' : ''}
-                >
-                    Down
-                </button>
-
-                <button
-                    type="button"
-                    id="prompt_phrase_delete_${index}"
-                    class="menu_button prompt_phrase_delete"
-                >
-                    Remove
-                </button>
+                <label for="prompt_phrase_enabled_${index}" class="sr-only">
+                    Enable prompt phrase ${index + 1}
+                </label>
             </div>
-        `;
-    }).join('');
+
+            <label for="prompt_phrase_text_${index}" class="sr-only">
+                Prompt phrase ${index + 1}
+            </label>
+
+            <input
+                type="text"
+                id="prompt_phrase_text_${index}"
+                class="text_pole flex1 prompt_phrase_text"
+                value="${escapeHtml(item.text)}"
+                placeholder="Enter prompt phrase"
+                autocomplete="off"
+            >
+
+            <button type="button" class="menu_button prompt_phrase_move_up" ${index === 0 ? 'disabled' : ''}>Up</button>
+            <button type="button" class="menu_button prompt_phrase_move_down" ${index === phrases.length - 1 ? 'disabled' : ''}>Down</button>
+            <button type="button" class="menu_button prompt_phrase_delete">Remove</button>
+        </div>
+    `).join('');
 
     container.html(html);
 }
@@ -429,6 +395,21 @@ async function createSettings(settingsHtml) {
         extension_settings[extensionName].promptPhrases.splice(index, 1);
         renderPromptPhraseItems();
         saveSettingsDebounced();
+    });
+
+    $('#prompt_items_container').on('focus', '.prompt_phrase_text', function () {
+        console.log('focused', this.id);
+    });
+
+    $('#prompt_items_container').on('input', '.prompt_phrase_text', function () {
+        console.log('input fired', this.value);
+    });
+    
+    $('#prompt_items_container').on('click', '.prompt_phrase_text', function () {
+        setTimeout(() => {
+            console.log('active element:', document.activeElement);
+            console.log('active id:', document.activeElement?.id);
+        }, 0);
     });
 
     $('#llm_analysis_classifier_separate').on('change', function () {
