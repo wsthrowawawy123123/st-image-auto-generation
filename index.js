@@ -70,6 +70,10 @@ function movePromptPhraseItem(index, direction) {
     [phrases[index], phrases[targetIndex]] = [phrases[targetIndex], phrases[index]];
 }
 
+function escapeHtml(value) {
+    return $('<div>').text(value ?? '').html();
+}
+
 function renderPromptPhraseItems() {
     const container = $('#prompt_items_container');
     if (!container.length) return;
