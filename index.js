@@ -131,6 +131,9 @@ const defaultSettings = {
         model: 'thedrummer/cydonia-24b-v4.3',
         promptMaxTokens: 120,
         promptTemperature: 0.4,
+        promptSanitizer: {
+            enabled: true,
+        },
 
         classifierUseSeparateBackend: false,
         classifierBackend: 'kobold',
@@ -183,6 +186,10 @@ function updateUI() {
         );
         $('#llm_analysis_prompt_temperature').val(
             extension_settings[extensionName].llmAnalysis.promptTemperature,
+        );
+        $('#llm_analysis_prompt_sanitizer_enabled').prop(
+            'checked',
+            extension_settings[extensionName].llmAnalysis.promptSanitizer?.enabled === true,
         );
 
         $('#llm_analysis_classifier_separate').prop(
@@ -304,6 +311,11 @@ async function createSettings(settingsHtml) {
 
     $('#llm_analysis_prompt_temperature').on('input', function () {
         extension_settings[extensionName].llmAnalysis.promptTemperature = Number($(this).val());
+        saveSettingsDebounced();
+    });
+
+    $('#llm_analysis_prompt_sanitizer_enabled').on('change', function () {
+        extension_settings[extensionName].llmAnalysis.promptSanitizer.enabled = $(this).prop('checked');
         saveSettingsDebounced();
     });
 
@@ -1118,6 +1130,72 @@ ${assistantText}`;
     return sceneTags.trim().replace(/^["']|["']$/g, '');
 }
 
+async function sanitizeImagePrompt(rawSceneTags, context) {
+    const settings = extension_settings[extensionName]?.llmAnalysis || {};
+    if (!settings.promptSanitizer?.enabled) {
+        return rawSceneTags;
+    }
+
+    const { latestAssistant, latestUser, previousAssistant } =
+        getRecentContextForImageAnalysis(context);
+
+    const assistantText = preprocessForImagePrompt(latestAssistant);
+    const userText = preprocessForImagePrompt(latestUser);
+    const prevAssistantText = preprocessForImagePrompt(previousAssistant);
+    const sanitizedInput = typeof rawSceneTags === 'string' ? rawSceneTags.trim() : '';
+
+    if (!sanitizedInput) {
+        return '';
+    }
+
+    const sanitizePrompt = `Rewrite these image tags for stable diffusion.
+
+    Rules:
+    - output comma-separated tags only
+    - 1-4 words per tag
+    - 8-14 tags max
+    - remove duplicates and near-duplicates
+    - keep character identity traits if present
+    - keep pose, clothing, interaction, environment, and lighting only if visually clear
+    - remove glamorized, glossy, or beauty-editorial wording unless explicitly required by the source
+    - prefer natural photographic wording when lighting is ambiguous
+    - do not add new details
+    - do not write sentences
+    - do not use quotes
+    - respond with tags only
+
+    Recent user context:
+    ${userText || '(none)'}
+
+    Previous assistant context:
+    ${prevAssistantText || '(none)'}
+
+    Current assistant reply:
+    ${assistantText || '(none)'}
+
+    Input tags:
+    ${sanitizedInput}`;
+
+    const result = await callChat(
+        [
+            {
+                role: 'system',
+                content: 'You sanitize image-generation tags. Return only concise comma-separated tags.',
+            },
+            {
+                role: 'user',
+                content: sanitizePrompt,
+            },
+        ],
+        {
+            max_tokens: Math.max(80, Math.min(settings.promptMaxTokens ?? 120, 120)),
+            temperature: Math.min(settings.promptTemperature ?? 0.4, 0.2),
+        },
+    );
+
+    return result.trim().replace(/^["']|["']$/g, '');
+}
+
 async function handleIncomingMessage() {
     if (isImageAnalysisCall) {
         console.log(`[${extensionName}] skipped MESSAGE_RECEIVED because analysis call is already in progress`);
@@ -1296,7 +1374,16 @@ async function handleIncomingMessage() {
     try {
         isImageAnalysisCall = true;
         sceneTags = await generateImageTagFromReply(context);
-        console.log(`[${extensionName}] scene builder output`, sceneTags);
+        console.log(`[${extensionName}] scene builder raw output`, sceneTags);
+
+        if (extension_settings[extensionName]?.llmAnalysis?.promptSanitizer?.enabled) {
+            const sanitizedSceneTags = await sanitizeImagePrompt(sceneTags, context);
+            console.log(`[${extensionName}] scene builder sanitized output`, {
+                rawSceneTags: sceneTags,
+                sanitizedSceneTags,
+            });
+            sceneTags = sanitizedSceneTags || sceneTags;
+        }
     } catch (error) {
         console.error(`[${extensionName}] scene builder failed`, error);
         return;
