@@ -864,9 +864,12 @@ Valid categories:
 Rules:
 - Base the judgment primarily on the CURRENT assistant reply.
 - Use Recent user context and Previous assistant context only to resolve ambiguity.
+- Evaluate the currently visible moment, not the broader relationship arc or what may have happened immediately before.
 - "generate" should be false only when the reply is not visually worth illustrating.
 - "weight" must be a number between 0.0 and 1.0.
-- Sexual or intimate physical action should usually be high weight.
+- Use "nsfw_action" only when the CURRENT assistant reply describes explicit ongoing sexual activity, explicit sexual contact, or clearly visible nudity/exposure in the present moment.
+- Do not use "nsfw_action" for aftermath, lingering attraction, romantic tension, affectionate hand-holding, kissing that is not explicit, or scene transitions after intimacy. Those should usually be "physical_interaction", "pose_change", or "ambient_scene".
+- Sexual or intimate physical action that is explicit in the current moment should usually be high weight.
 - Clear requests for photos/selfies should usually be weight 1.0.
 - Major scene/location changes should usually be high weight.
 - Pure dialogue with no visible narration should be generate=false and weight=0.0.
@@ -1147,12 +1150,10 @@ async function sanitizeImagePrompt(rawSceneTags, context) {
         return rawSceneTags;
     }
 
-    const { latestAssistant, latestUser, previousAssistant } =
+    const { latestAssistant } =
         getRecentContextForImageAnalysis(context);
 
     const assistantText = preprocessForImagePrompt(latestAssistant);
-    const userText = preprocessForImagePrompt(latestUser);
-    const prevAssistantText = preprocessForImagePrompt(previousAssistant);
     const sanitizedInput = typeof rawSceneTags === 'string' ? rawSceneTags.trim() : '';
 
     if (!sanitizedInput) {
@@ -1164,22 +1165,22 @@ async function sanitizeImagePrompt(rawSceneTags, context) {
     Rules:
     - output comma-separated tags only
     - 1-4 words per tag
-    - 8-14 tags max
+    - 7-12 tags max
     - remove duplicates and near-duplicates
     - keep character identity traits if present
     - keep pose, clothing, interaction, environment, and lighting only if visually clear
     - remove glamorized, glossy, or beauty-editorial wording unless explicitly required by the source
     - prefer natural photographic wording when lighting is ambiguous
+    - prefer concrete visible nouns, poses, expressions, framing, clothing, props, and lighting
+    - keep interaction tags only if they describe something directly visible, like holding hands or touching shoulder
+    - drop inferred action, backstory, sequence, or transition language
+    - drop abstract emotion labels like happy mood, affectionate mood, playful energy, romantic tension
+    - drop non-visual bodily sensations or internal states like shaky legs, nervousness, arousal, anticipation
+    - rewrite vague expression tags into visible facial cues when possible, like smiling, parted lips, looking away
     - do not add new details
     - do not write sentences
     - do not use quotes
     - respond with tags only
-
-    Recent user context:
-    ${userText || '(none)'}
-
-    Previous assistant context:
-    ${prevAssistantText || '(none)'}
 
     Current assistant reply:
     ${assistantText || '(none)'}
