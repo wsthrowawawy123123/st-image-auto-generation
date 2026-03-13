@@ -869,6 +869,9 @@ Rules:
 - "weight" must be a number between 0.0 and 1.0.
 - Use "nsfw_action" only when the CURRENT assistant reply describes explicit ongoing sexual activity, explicit sexual contact, or clearly visible nudity/exposure in the present moment.
 - Do not use "nsfw_action" for aftermath, lingering attraction, romantic tension, affectionate hand-holding, kissing that is not explicit, or scene transitions after intimacy. Those should usually be "physical_interaction", "pose_change", or "ambient_scene".
+- Do not use "nsfw_action" for flirtation, suggestive atmosphere, partial undressing, teasing behavior, knowing looks, or seductive setup unless explicit sexual contact or explicit exposure is already happening in the current visible moment.
+- If explicit sexual content is mentioned only as past context, aftermath, explanation, memory, or emotional carryover, do not use "nsfw_action".
+- If the present-moment frame is mainly entering a room, walking together, looking around, removing shoes, adjusting clothing, holding hands, smiling, or observing the environment, prefer "physical_interaction", "pose_change", or "ambient_scene".
 - Sexual or intimate physical action that is explicit in the current moment should usually be high weight.
 - Clear requests for photos/selfies should usually be weight 1.0.
 - Major scene/location changes should usually be high weight.
