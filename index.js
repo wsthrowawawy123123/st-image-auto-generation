@@ -24,6 +24,8 @@ const INSERT_TYPE = {
 };
 
 let isImageAnalysisCall = false;
+let internalImageCommandInvocationDepth = 0;
+let imageCommandWrappersInstalled = false;
 const imageGenerationState = createImageGenerationState();
 let sceneMemory = {
     location: '',
@@ -130,6 +132,66 @@ function buildPromptFromPhrases(sceneTags) {
         extension_settings[extensionName]?.promptPhrases,
         sceneTags,
     );
+}
+
+function prependPromptPhrases(prompt) {
+    return buildPromptFromPhraseItems(
+        extension_settings[extensionName]?.promptPhrases,
+        prompt,
+    );
+}
+
+function isManualImageCommandMessage(text) {
+    if (typeof text !== 'string') {
+        return false;
+    }
+
+    return /^\/(?:image|sd)\b/i.test(text.trim());
+}
+
+function installImageCommandWrappers() {
+    if (imageCommandWrappersInstalled) {
+        return;
+    }
+
+    const commandNames = ['image', 'sd'];
+    let wrappedAny = false;
+
+    for (const commandName of commandNames) {
+        const command = SlashCommandParser.commands?.[commandName];
+        if (!command || typeof command.callback !== 'function') {
+            continue;
+        }
+
+        if (command.callback.__stImageAutoGenerationWrapped) {
+            wrappedAny = true;
+            continue;
+        }
+
+        const originalCallback = command.callback;
+        const wrappedCallback = async function (args, prompt, ...rest) {
+            if (internalImageCommandInvocationDepth > 0) {
+                return await originalCallback.call(this, args, prompt, ...rest);
+            }
+
+            const mergedPrompt = prependPromptPhrases(typeof prompt === 'string' ? prompt : '');
+            console.log(`[${extensionName}] wrapped /${commandName} prompt`, {
+                originalPrompt: prompt,
+                mergedPrompt,
+            });
+            return await originalCallback.call(this, args, mergedPrompt, ...rest);
+        };
+
+        wrappedCallback.__stImageAutoGenerationWrapped = true;
+        wrappedCallback.__stImageAutoGenerationOriginal = originalCallback;
+        command.callback = wrappedCallback;
+        wrappedAny = true;
+    }
+
+    if (wrappedAny) {
+        imageCommandWrappersInstalled = true;
+        console.log(`[${extensionName}] installed image command wrappers`);
+    }
 }
 
 const defaultSettings = {
@@ -460,10 +522,13 @@ $(function () {
 
         await loadSettings();
         await createSettings(settingsHtml);
+        installImageCommandWrappers();
 
         $('#extensions-settings-button').off('click.stImageAutoGeneration').on('click.stImageAutoGeneration', function () {
             setTimeout(() => {
                 updateUI();
+                renderPromptPhraseItems();
+                installImageCommandWrappers();
             }, 200);
         });
     })();
@@ -1301,6 +1366,14 @@ async function handleIncomingMessage() {
     const { latestUser } = getRecentContextForImageAnalysis(context);
     const userText = preprocessForImagePrompt(latestUser || '');
 
+    if (isManualImageCommandMessage(latestUser || '')) {
+        console.log(`[${extensionName}] skipped auto-generation because latest user message was a manual image command`, {
+            currentIndex,
+            latestUser,
+        });
+        return;
+    }
+
     let sceneEval = {
         generate: false,
         category: 'dialogue_only',
@@ -1432,12 +1505,18 @@ async function handleIncomingMessage() {
             beginPendingGeneratedImageMessage(context, message, prompt);
         }
 
-        const result = await SlashCommandParser.commands.sd.callback(
-            {
-                quiet: insertType === INSERT_TYPE.NEW_MESSAGE ? 'false' : 'true',
-            },
-            prompt,
-        );
+        internalImageCommandInvocationDepth++;
+        let result;
+        try {
+            result = await SlashCommandParser.commands.sd.callback(
+                {
+                    quiet: insertType === INSERT_TYPE.NEW_MESSAGE ? 'false' : 'true',
+                },
+                prompt,
+            );
+        } finally {
+            internalImageCommandInvocationDepth = Math.max(0, internalImageCommandInvocationDepth - 1);
+        }
 
         console.log(`[${extensionName}] /sd completed`, {
             currentIndex,
