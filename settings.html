@@ -76,6 +76,22 @@
 
         <hr class="sysHR">
 
+        <div>
+            <div class="flex-container flexnowrap flexGap10 alignitemscenter">
+                <label class="flex1">
+                    Prompt Phrases
+                </label>
+                <button id="prompt_item_add" class="menu_button" type="button">Add Item</button>
+            </div>
+            <small>
+                Phrases are concatenated in order before the generated image prompt.
+            </small>
+        </div>
+
+        <div id="prompt_items_container" class="marginTop10"></div>
+
+        <hr class="sysHR">
+
         <div class="flex-container flexnowrap">
             <label class="checkbox_label" for="llm_analysis_classifier_separate">
                 <span>Use Separate Classifier Backend</span>

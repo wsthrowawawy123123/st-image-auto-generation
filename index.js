@@ -32,8 +32,98 @@ let sceneMemory = {
     mood: '',
 };
 
+function createPromptPhraseItem(text = '') {
+    return {
+        id: `phrase_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`,
+        enabled: true,
+        text,
+    };
+}
+
+function normalizePromptPhrases(items) {
+    if (!Array.isArray(items)) {
+        return [];
+    }
+
+    return items
+        .filter(item => item && typeof item === 'object')
+        .map(item => ({
+            id: typeof item.id === 'string' && item.id.trim()
+                ? item.id.trim()
+                : createPromptPhraseItem().id,
+            enabled: item.enabled !== false,
+            text: typeof item.text === 'string' ? item.text : '',
+        }));
+}
+
+function movePromptPhraseItem(index, direction) {
+    const phrases = extension_settings[extensionName]?.promptPhrases;
+    if (!Array.isArray(phrases)) {
+        return;
+    }
+
+    const targetIndex = index + direction;
+    if (targetIndex < 0 || targetIndex >= phrases.length) {
+        return;
+    }
+
+    [phrases[index], phrases[targetIndex]] = [phrases[targetIndex], phrases[index]];
+}
+
+function renderPromptPhraseItems() {
+    const container = $('#prompt_items_container');
+    if (!container.length) {
+        return;
+    }
+
+    const phrases = extension_settings[extensionName]?.promptPhrases || [];
+
+    if (!phrases.length) {
+        container.html('<div class="text-muted">No prompt phrases yet.</div>');
+        return;
+    }
+
+    const html = phrases.map((item, index) => `
+        <div class="prompt_phrase_row flex-container flexnowrap flexGap10 marginTop5" data-index="${index}">
+            <label class="checkbox_label">
+                <input type="checkbox" class="checkbox prompt_phrase_enabled" ${item.enabled ? 'checked' : ''}>
+            </label>
+            <input
+                type="text"
+                class="text_pole flex1 prompt_phrase_text"
+                value="${$('<div>').text(item.text).html()}"
+                placeholder="Enter prompt phrase"
+            >
+            <button type="button" class="menu_button prompt_phrase_move_up" ${index === 0 ? 'disabled' : ''}>Up</button>
+            <button type="button" class="menu_button prompt_phrase_move_down" ${index === phrases.length - 1 ? 'disabled' : ''}>Down</button>
+            <button type="button" class="menu_button prompt_phrase_delete">Remove</button>
+        </div>
+    `).join('');
+
+    container.html(html);
+}
+
+function buildPromptFromPhrases(sceneTags) {
+    const phrases = normalizePromptPhrases(extension_settings[extensionName]?.promptPhrases);
+    const orderedParts = phrases
+        .filter(item => item.enabled)
+        .map(item => item.text.trim())
+        .filter(Boolean);
+
+    const cleanedSceneTags = typeof sceneTags === 'string'
+        ? sceneTags.replace(/^["'\s]+|["'\s]+$/g, '').replace(/\n/g, ' ').trim()
+        : '';
+
+    if (cleanedSceneTags) {
+        orderedParts.push(cleanedSceneTags);
+    }
+
+    return orderedParts.join(', ').replace(/\s+,/g, ',').trim();
+}
+
 const defaultSettings = {
     insertType: INSERT_TYPE.DISABLED,
+    promptPhrases: [],
     llmAnalysis: {
         enabled: true,
         endpoint: '',
@@ -117,6 +207,8 @@ function updateUI() {
         $('#llm_analysis_classifier_temperature').val(
             extension_settings[extensionName].llmAnalysis.classifierTemperature,
         );
+
+        renderPromptPhraseItems();
     }
 }
 
@@ -162,6 +254,10 @@ async function loadSettings() {
         if (extension_settings[extensionName].insertType === 'replace') {
             extension_settings[extensionName].insertType = INSERT_TYPE.INLINE;
         }
+
+        extension_settings[extensionName].promptPhrases = normalizePromptPhrases(
+            extension_settings[extensionName].promptPhrases,
+        );
     }
 
     updateUI();
@@ -209,6 +305,55 @@ async function createSettings(settingsHtml) {
 
     $('#llm_analysis_prompt_temperature').on('input', function () {
         extension_settings[extensionName].llmAnalysis.promptTemperature = Number($(this).val());
+        saveSettingsDebounced();
+    });
+
+    $('#prompt_item_add').on('click', function () {
+        extension_settings[extensionName].promptPhrases.push(createPromptPhraseItem(''));
+        renderPromptPhraseItems();
+        saveSettingsDebounced();
+    });
+
+    $('#prompt_items_container').on('input', '.prompt_phrase_text', function () {
+        const index = Number($(this).closest('.prompt_phrase_row').data('index'));
+        const item = extension_settings[extensionName].promptPhrases[index];
+        if (!item) {
+            return;
+        }
+
+        item.text = $(this).val();
+        saveSettingsDebounced();
+    });
+
+    $('#prompt_items_container').on('change', '.prompt_phrase_enabled', function () {
+        const index = Number($(this).closest('.prompt_phrase_row').data('index'));
+        const item = extension_settings[extensionName].promptPhrases[index];
+        if (!item) {
+            return;
+        }
+
+        item.enabled = $(this).prop('checked');
+        saveSettingsDebounced();
+    });
+
+    $('#prompt_items_container').on('click', '.prompt_phrase_move_up', function () {
+        const index = Number($(this).closest('.prompt_phrase_row').data('index'));
+        movePromptPhraseItem(index, -1);
+        renderPromptPhraseItems();
+        saveSettingsDebounced();
+    });
+
+    $('#prompt_items_container').on('click', '.prompt_phrase_move_down', function () {
+        const index = Number($(this).closest('.prompt_phrase_row').data('index'));
+        movePromptPhraseItem(index, 1);
+        renderPromptPhraseItems();
+        saveSettingsDebounced();
+    });
+
+    $('#prompt_items_container').on('click', '.prompt_phrase_delete', function () {
+        const index = Number($(this).closest('.prompt_phrase_row').data('index'));
+        extension_settings[extensionName].promptPhrases.splice(index, 1);
+        renderPromptPhraseItems();
         saveSettingsDebounced();
     });
 
@@ -1165,12 +1310,13 @@ async function handleIncomingMessage() {
         return;
     }
 
-    const prompt = sceneTags
-        .replace(/^["'\s]+|["'\s]+$/g, '')
-        .replace(/\n/g, ' ')
-        .trim();
+    const prompt = buildPromptFromPhrases(sceneTags);
 
-    console.log(`[${extensionName}] final SD prompt`, prompt);
+    console.log(`[${extensionName}] final SD prompt`, {
+        prompt,
+        promptPhrases: structuredClone(extension_settings[extensionName]?.promptPhrases || []),
+        sceneTags,
+    });
 
     const insertType = extension_settings[extensionName].insertType;
     const sdStartAt = Date.now();
