@@ -839,11 +839,10 @@ function safeParseJsonObject(raw) {
 
 async function classifyReplyForImage(context) {
     const settings = extension_settings[extensionName]?.llmAnalysis || {};
-    const { latestAssistant, latestUser, previousAssistant } =
+    const { latestAssistant, previousAssistant } =
         getRecentContextForImageAnalysis(context);
 
     const assistantText = preprocessForImagePrompt(latestAssistant);
-    const userText = preprocessForImagePrompt(latestUser);
     const prevAssistantText = preprocessForImagePrompt(previousAssistant);
 
     const evaluatorPrompt = `Evaluate the CURRENT assistant reply for image generation.
@@ -863,7 +862,7 @@ Valid categories:
 
 Rules:
 - Base the judgment primarily on the CURRENT assistant reply.
-- Use Recent user context and Previous assistant context only to resolve ambiguity.
+- Use Previous assistant context only to resolve ambiguity.
 - Evaluate the currently visible moment, not the broader relationship arc or what may have happened immediately before.
 - "generate" should be false only when the reply is not visually worth illustrating.
 - "weight" must be a number between 0.0 and 1.0.
@@ -879,9 +878,6 @@ Rules:
 - Respond with JSON only.
 - Do not include markdown fences.
 - Do not include explanation text.
-
-Recent user context:
-${userText || '(none)'}
 
 Previous assistant context:
 ${prevAssistantText || '(none)'}
@@ -927,11 +923,10 @@ ${assistantText}`;
 
 async function extractScenePatch(context) {
     const settings = extension_settings[extensionName]?.llmAnalysis || {};
-    const { latestAssistant, latestUser, previousAssistant } =
+    const { latestAssistant, previousAssistant } =
         getRecentContextForImageAnalysis(context);
 
     const assistantText = preprocessForImagePrompt(latestAssistant);
-    const userText = preprocessForImagePrompt(latestUser);
     const prevAssistantText = preprocessForImagePrompt(previousAssistant);
 
     const patchPrompt = `Extract the current visual scene state update from the CURRENT assistant reply.
@@ -953,13 +948,10 @@ Rules:
 - Only include fields that are explicitly stated or strongly implied by the CURRENT assistant reply.
 - If a field did not change or is unclear, leave it as an empty string, or [] for props.
 - Do not invent details.
-- Use Recent user context and Previous assistant context only to resolve ambiguity.
+- Use Previous assistant context only to resolve ambiguity.
 - Respond with JSON only.
 - Do not include markdown fences.
 - Do not include explanation text.
-
-Recent user context:
-${userText || '(none)'}
 
 Previous assistant context:
 ${prevAssistantText || '(none)'}
@@ -1047,11 +1039,10 @@ function mergeScenePatch(patch) {
 
 async function generateImageTagFromReply(context) {
     const settings = extension_settings[extensionName]?.llmAnalysis || {};
-    const { latestAssistant, latestUser, previousAssistant } =
+    const { latestAssistant, previousAssistant } =
         getRecentContextForImageAnalysis(context);
 
     const assistantText = preprocessForImagePrompt(latestAssistant);
-    const userText = preprocessForImagePrompt(latestUser);
     const prevAssistantText = preprocessForImagePrompt(previousAssistant);
 
     const memoryBlock =
@@ -1071,7 +1062,6 @@ async function generateImageTagFromReply(context) {
     console.log(`[${extensionName}] scene continuity context for prompt generation`, {
         sceneMemoryEnabled: extension_settings[extensionName]?.llmAnalysis?.sceneMemory?.enabled === true,
         sceneMemory: structuredClone(sceneMemory),
-        latestUserPreview: userText.slice(0, 160),
         previousAssistantPreview: prevAssistantText.slice(0, 160),
         latestAssistantPreview: assistantText.slice(0, 160),
     });
@@ -1081,7 +1071,7 @@ async function generateImageTagFromReply(context) {
 Convert that moment into concise visual tags for image generation.
 
 Base the tags primarily on the CURRENT assistant reply.
-Use Recent user context and Previous assistant context only to resolve ambiguity or maintain scene continuity.
+Use Previous assistant context only to resolve ambiguity or maintain scene continuity.
 Use Current scene memory to preserve stable details unless the CURRENT assistant reply clearly changes them.
 
 Rules:
@@ -1117,9 +1107,6 @@ Example output:
 first person perspective, kneeling pose, looking up, open blouse, office desk, warm lighting
 
 ${memoryBlock}
-
-Recent user context:
-${userText || '(none)'}
 
 Previous assistant context:
 ${prevAssistantText || '(none)'}
