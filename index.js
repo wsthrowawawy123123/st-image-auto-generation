@@ -12,6 +12,11 @@ import {
     createPromptPhraseItem,
     normalizePromptPhrases,
 } from './src/promptPhraseUtils.js';
+import {
+    buildSceneMemoryAnchorTags,
+    createEmptySceneMemory,
+    mergeScenePatch,
+} from './src/sceneMemory.js';
 
 const extensionName = 'st-image-auto-generation';
 const extensionFolderPath = `/scripts/extensions/third-party/${extensionName}`;
@@ -25,17 +30,7 @@ const INSERT_TYPE = {
 
 let isImageAnalysisCall = false;
 const imageGenerationState = createImageGenerationState();
-let sceneMemory = {
-    location: '',
-    environment: '',
-    assistantPose: '',
-    assistantClothing: '',
-    assistantExpression: '',
-    interaction: '',
-    props: [],
-    lighting: '',
-    mood: '',
-};
+let sceneMemory = createEmptySceneMemory();
 
 function movePromptPhraseItem(index, direction) {
     const phrases = extension_settings[extensionName]?.promptPhrases;
@@ -999,43 +994,6 @@ ${assistantText}`;
     };
 }
 
-function mergeScenePatch(patch) {
-    if (!patch) {
-        return;
-    }
-
-    const previousLocation = sceneMemory.location;
-
-    if (patch.location && patch.location !== previousLocation) {
-        sceneMemory.location = patch.location;
-        sceneMemory.environment = patch.environment || '';
-        sceneMemory.assistantPose = patch.assistantPose || '';
-        sceneMemory.interaction = patch.interaction || '';
-        sceneMemory.props = Array.isArray(patch.props) ? patch.props : [];
-        sceneMemory.lighting = patch.lighting || '';
-        sceneMemory.mood = patch.mood || '';
-        if (patch.assistantClothing) {
-            sceneMemory.assistantClothing = patch.assistantClothing;
-        }
-        if (patch.assistantExpression) {
-            sceneMemory.assistantExpression = patch.assistantExpression;
-        }
-        return;
-    }
-
-    for (const [key, value] of Object.entries(patch)) {
-        if (Array.isArray(value)) {
-            if (value.length > 0) {
-                sceneMemory[key] = value;
-            }
-            continue;
-        }
-
-        if (typeof value === 'string' && value.trim()) {
-            sceneMemory[key] = value.trim();
-        }
-    }
-}
 
 async function generateImageTagFromReply(context) {
     const settings = extension_settings[extensionName]?.llmAnalysis || {};
@@ -1145,6 +1103,10 @@ async function sanitizeImagePrompt(rawSceneTags, context) {
 
     const assistantText = preprocessForImagePrompt(latestAssistant);
     const sanitizedInput = typeof rawSceneTags === 'string' ? rawSceneTags.trim() : '';
+    const memoryAnchorTags =
+        extension_settings[extensionName]?.llmAnalysis?.sceneMemory?.enabled
+            ? buildSceneMemoryAnchorTags()
+            : '';
 
     if (!sanitizedInput) {
         return '';
@@ -1159,6 +1121,7 @@ async function sanitizeImagePrompt(rawSceneTags, context) {
     - remove duplicates and near-duplicates
     - keep character identity traits if present
     - keep pose, clothing, interaction, environment, and lighting only if visually clear
+    - preserve stable clothing, environment, prop, and lighting details from Scene memory unless the CURRENT assistant reply clearly changes them
     - remove glamorized, glossy, or beauty-editorial wording unless explicitly required by the source
     - prefer natural photographic wording when lighting is ambiguous
     - prefer concrete visible nouns, poses, expressions, framing, clothing, props, and lighting
@@ -1174,6 +1137,9 @@ async function sanitizeImagePrompt(rawSceneTags, context) {
 
     Current assistant reply:
     ${assistantText || '(none)'}
+
+    Scene memory:
+    ${memoryAnchorTags || '(none)'}
 
     Input tags:
     ${sanitizedInput}`;
@@ -1320,6 +1286,10 @@ async function handleIncomingMessage() {
 
         if (sceneEval.category === 'nsfw_action') {
             sceneEval.weight = Math.max(sceneEval.weight, 0.9);
+        }
+
+        if (sceneEval.category === 'physical_interaction') {
+            sceneEval.weight = Math.min(sceneEval.weight, 0.82);
         }
 
         console.log(`[${extensionName}] scene eval`, {
