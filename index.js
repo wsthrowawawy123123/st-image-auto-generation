@@ -7,6 +7,11 @@ import {
 import { appendMediaToMessage } from '../../../../script.js';
 import { SlashCommandParser } from '../../../slash-commands/SlashCommandParser.js';
 import { createImageGenerationState } from './src/imageGenerationState.js';
+import {
+    buildPromptFromPhrases as buildPromptFromPhraseItems,
+    createPromptPhraseItem,
+    normalizePromptPhrases,
+} from './src/promptPhraseUtils.js';
 
 const extensionName = 'st-image-auto-generation';
 const extensionFolderPath = `/scripts/extensions/third-party/${extensionName}`;
@@ -31,30 +36,6 @@ let sceneMemory = {
     lighting: '',
     mood: '',
 };
-
-function createPromptPhraseItem(text = '') {
-    return {
-        id: `phrase_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`,
-        enabled: true,
-        text,
-    };
-}
-
-function normalizePromptPhrases(items) {
-    if (!Array.isArray(items)) {
-        return [];
-    }
-
-    return items
-        .filter(item => item && typeof item === 'object')
-        .map(item => ({
-            id: typeof item.id === 'string' && item.id.trim()
-                ? item.id.trim()
-                : createPromptPhraseItem().id,
-            enabled: item.enabled !== false,
-            text: typeof item.text === 'string' ? item.text : '',
-        }));
-}
 
 function movePromptPhraseItem(index, direction) {
     const phrases = extension_settings[extensionName]?.promptPhrases;
@@ -145,21 +126,10 @@ function savePromptPhraseItemsFromDom() {
 }
 
 function buildPromptFromPhrases(sceneTags) {
-    const phrases = normalizePromptPhrases(extension_settings[extensionName]?.promptPhrases);
-    const orderedParts = phrases
-        .filter(item => item.enabled)
-        .map(item => item.text.trim())
-        .filter(Boolean);
-
-    const cleanedSceneTags = typeof sceneTags === 'string'
-        ? sceneTags.replace(/^["'\s]+|["'\s]+$/g, '').replace(/\n/g, ' ').trim()
-        : '';
-
-    if (cleanedSceneTags) {
-        orderedParts.push(cleanedSceneTags);
-    }
-
-    return orderedParts.join(', ').replace(/\s+,/g, ',').trim();
+    return buildPromptFromPhraseItems(
+        extension_settings[extensionName]?.promptPhrases,
+        sceneTags,
+    );
 }
 
 const defaultSettings = {
