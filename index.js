@@ -75,7 +75,6 @@ function escapeHtml(value) {
 }
 
 function renderPromptPhraseItems() {
-    console.log('renderPromptPhraseItems called');
     const container = $('#prompt_items_container');
     if (!container.length) return;
 
@@ -87,7 +86,11 @@ function renderPromptPhraseItems() {
     }
 
     const html = phrases.map((item, index) => `
-        <div class="prompt_phrase_row flex-container flexnowrap flexGap10 marginTop5" data-index="${index}">
+        <div
+            class="prompt_phrase_row flex-container flexnowrap flexGap10 marginTop5"
+            data-index="${index}"
+            data-id="${escapeHtml(item.id)}"
+        >
             <div class="prompt_phrase_toggle">
                 <input
                     type="checkbox"
@@ -357,14 +360,14 @@ async function createSettings(settingsHtml) {
         saveSettingsDebounced();
     });
 
-    $('#prompt_item_add').on('click', function () {
+    $('#prompt_item_add').off('click.stImageAutoGeneration').on('click.stImageAutoGeneration', function () {
         savePromptPhraseItemsFromDom();
         extension_settings[extensionName].promptPhrases.push(createPromptPhraseItem(''));
         renderPromptPhraseItems();
         saveSettingsDebounced();
     });
 
-    $('#prompt_items_save').on('click', function () {
+    $('#prompt_items_save').off('click.stImageAutoGeneration').on('click.stImageAutoGeneration', function () {
         savePromptPhraseItemsFromDom();
         toastr.success('Prompt phrases saved');
     });
@@ -397,19 +400,12 @@ async function createSettings(settingsHtml) {
         saveSettingsDebounced();
     });
 
-    $('#prompt_items_container').on('focus', '.prompt_phrase_text', function () {
-        console.log('focused', this.id);
-    });
-
     $('#prompt_items_container').on('input', '.prompt_phrase_text', function () {
-        console.log('input fired', this.value);
-    });
-    
-    $('#prompt_items_container').on('click', '.prompt_phrase_text', function () {
-        setTimeout(() => {
-            console.log('active element:', document.activeElement);
-            console.log('active id:', document.activeElement?.id);
-        }, 0);
+        const index = Number($(this).closest('.prompt_phrase_row').data('index'));
+        const phrases = extension_settings[extensionName]?.promptPhrases || [];
+        if (phrases[index]) {
+            phrases[index].text = String($(this).val() || '');
+        }
     });
 
     $('#llm_analysis_classifier_separate').on('change', function () {
@@ -494,10 +490,9 @@ $(function () {
         await loadSettings();
         await createSettings(settingsHtml);
 
-        $('#extensions-settings-button').on('click', function () {
+        $('#extensions-settings-button').off('click.stImageAutoGeneration').on('click.stImageAutoGeneration', function () {
             setTimeout(() => {
                 updateUI();
-                renderPromptPhraseItems();
             }, 200);
         });
     })();
