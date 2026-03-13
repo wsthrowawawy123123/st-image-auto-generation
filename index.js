@@ -998,15 +998,32 @@ async function handleIncomingMessage() {
         return;
     }
 
-    if (!message.mes || !message.mes.trim()) {
+    const messageText = typeof message.mes === 'string' ? message.mes.trim() : '';
+    if (!messageText) {
         return;
     }
 
+    // Ignore messages that are clearly image-generation outputs
+    if (
+        message.extra?.image ||
+        message.extra?.inline_image ||
+        Array.isArray(message.extra?.image_swipes)
+    ) {
+        return;
+    }
+
+    // Ignore messages this extension already handled
     if (message.extra?.imageAutoGenerationProcessed) {
         return;
     }
 
-    if (message.extra?.inline_image || message.extra?.image) {
+    if (!message.extra) {
+        message.extra = {};
+    }
+
+    message.extra.imageAutoGenerationProcessed = true;
+
+    if (!extension_settings[extensionName]?.llmAnalysis?.enabled) {
         return;
     }
 
