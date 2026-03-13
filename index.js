@@ -349,6 +349,10 @@ async function createSettings(settingsHtml) {
         toastr.success('Prompt phrases saved');
     });
 
+    $('#prompt_items_container').on('change', '.prompt_phrase_enabled', function () {
+        savePromptPhraseItemsFromDom();
+    });
+
     $('#prompt_items_container').on('click', '.prompt_phrase_move_up', function () {
         savePromptPhraseItemsFromDom();
         const index = Number($(this).closest('.prompt_phrase_row').data('index'));
