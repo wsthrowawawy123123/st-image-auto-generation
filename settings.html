@@ -20,6 +20,14 @@
     #image_auto_generation_container .prompt_phrase_text {
         min-width: 0;
     }
+
+    #image_auto_generation_container .stimg_checkbox_row {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        width: 100%;
+        gap: 10px;
+    }
 </style>
 
 <div class="inline-drawer">
@@ -44,7 +52,7 @@
         <hr class="sysHR">
 
         <div class="flex-container flexnowrap">
-            <div class="checkbox_label">
+            <div class="stimg_checkbox_row">
                 <span>Enable LLM Scene Analysis</span>
                 <input type="checkbox" id="llm_analysis_enabled" name="llm_analysis_enabled" class="checkbox" autocomplete="off">
             </div>
@@ -101,7 +109,7 @@
         <hr class="sysHR">
 
         <div class="flex-container flexnowrap">
-            <div class="checkbox_label">
+            <div class="stimg_checkbox_row">
                 <span>Use Separate Classifier Backend</span>
                 <input type="checkbox" id="llm_analysis_classifier_separate" name="llm_analysis_classifier_separate" class="checkbox" autocomplete="off">
             </div>
@@ -174,7 +182,7 @@
 
         <div>
             <div class="flex-container flexnowrap">
-                <div class="checkbox_label">
+                <div class="stimg_checkbox_row">
                     <span>Enable Prompt Sanitizer</span>
                     <input type="checkbox" id="llm_analysis_prompt_sanitizer_enabled" name="llm_analysis_prompt_sanitizer_enabled" class="checkbox" autocomplete="off">
                 </div>
