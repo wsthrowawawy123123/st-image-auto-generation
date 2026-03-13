@@ -85,9 +85,9 @@ function renderPromptPhraseItems() {
 
     const html = phrases.map((item, index) => `
         <div class="prompt_phrase_row flex-container flexnowrap flexGap10 marginTop5" data-index="${index}" data-id="${$('<div>').text(item.id).html()}">
-            <label class="checkbox_label">
+            <div class="prompt_phrase_toggle">
                 <input type="checkbox" class="checkbox prompt_phrase_enabled" ${item.enabled ? 'checked' : ''}>
-            </label>
+            </div>
             <input
                 type="text"
                 class="text_pole flex1 prompt_phrase_text"
