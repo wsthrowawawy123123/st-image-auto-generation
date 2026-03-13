@@ -998,7 +998,15 @@ async function handleIncomingMessage() {
         return;
     }
 
-    if (!extension_settings[extensionName]?.llmAnalysis?.enabled) {
+    if (!message.mes || !message.mes.trim()) {
+        return;
+    }
+
+    if (message.extra?.imageAutoGenerationProcessed) {
+        return;
+    }
+
+    if (message.extra?.inline_image || message.extra?.image) {
         return;
     }
 
