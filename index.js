@@ -19,6 +19,8 @@ const INSERT_TYPE = {
 
 let isImageAnalysisCall = false;
 let lastImageGeneratedAtMessageIndex = -Infinity;
+let pendingImageMessagesToIgnore = 0;
+let lastSdInvocationAt = 0;
 let sceneMemory = {
     location: '',
     environment: '',
@@ -998,12 +1000,24 @@ async function handleIncomingMessage() {
         return;
     }
 
+    // Ignore the assistant message created by our own /sd new-message generation
+    if (pendingImageMessagesToIgnore > 0) {
+        const ageMs = Date.now() - lastSdInvocationAt;
+
+        if (ageMs < 10000) {
+            pendingImageMessagesToIgnore--;
+            console.log(`[${extensionName}] ignored self-generated image message`);
+            return;
+        }
+
+        pendingImageMessagesToIgnore = 0;
+    }
+
     const messageText = typeof message.mes === 'string' ? message.mes.trim() : '';
     if (!messageText) {
         return;
     }
 
-    // Ignore messages that are clearly image-generation outputs
     if (
         message.extra?.image ||
         message.extra?.inline_image ||
@@ -1012,7 +1026,6 @@ async function handleIncomingMessage() {
         return;
     }
 
-    // Ignore messages this extension already handled
     if (message.extra?.imageAutoGenerationProcessed) {
         return;
     }
@@ -1114,6 +1127,11 @@ async function handleIncomingMessage() {
 
     try {
         toastr.info('Generating image...');
+
+        if (insertType === INSERT_TYPE.NEW_MESSAGE) {
+            pendingImageMessagesToIgnore += 1;
+            lastSdInvocationAt = Date.now();
+        }
 
         const result = await SlashCommandParser.commands.sd.callback(
             {
