@@ -207,8 +207,6 @@ function updateUI() {
         $('#llm_analysis_classifier_temperature').val(
             extension_settings[extensionName].llmAnalysis.classifierTemperature,
         );
-
-        renderPromptPhraseItems();
     }
 }
 
@@ -261,6 +259,7 @@ async function loadSettings() {
     }
 
     updateUI();
+    renderPromptPhraseItems();
 }
 
 async function createSettings(settingsHtml) {

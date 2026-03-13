@@ -1,3 +1,27 @@
+<style>
+    #image_auto_generation_container {
+        width: 100%;
+    }
+
+    #image_auto_generation_container .inline-drawer {
+        width: 100%;
+    }
+
+    #image_auto_generation_container .inline-drawer-content {
+        width: 100%;
+        box-sizing: border-box;
+    }
+
+    #image_auto_generation_container .prompt_phrase_row {
+        align-items: center;
+        width: 100%;
+    }
+
+    #image_auto_generation_container .prompt_phrase_text {
+        min-width: 0;
+    }
+</style>
+
 <div class="inline-drawer">
     <div class="inline-drawer-toggle inline-drawer-header">
         <b data-i18n="Image Auto Generation">Image Auto Generation</b>
@@ -76,22 +100,6 @@
 
         <hr class="sysHR">
 
-        <div>
-            <div class="flex-container flexnowrap flexGap10 alignitemscenter">
-                <label class="flex1">
-                    Prompt Phrases
-                </label>
-                <button id="prompt_item_add" class="menu_button" type="button">Add Item</button>
-            </div>
-            <small>
-                Phrases are concatenated in order before the generated image prompt.
-            </small>
-        </div>
-
-        <div id="prompt_items_container" class="marginTop10"></div>
-
-        <hr class="sysHR">
-
         <div class="flex-container flexnowrap">
             <label class="checkbox_label" for="llm_analysis_classifier_separate">
                 <span>Use Separate Classifier Backend</span>
@@ -161,5 +169,21 @@
             <input id="llm_analysis_classifier_temperature" class="text_pole" type="number" min="0" max="2" step="0.01"
                 placeholder="0.1">
         </div>
+
+        <hr class="sysHR">
+
+        <div>
+            <div class="flex-container flexnowrap flexGap10 alignitemscenter">
+                <label class="flex1">
+                    Prompt Phrases
+                </label>
+                <button id="prompt_item_add" class="menu_button" type="button">Add Item</button>
+            </div>
+            <small>
+                Phrases are concatenated in order before the generated image prompt.
+            </small>
+        </div>
+
+        <div id="prompt_items_container" class="marginTop10"></div>
     </div>
 </div>
