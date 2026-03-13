@@ -444,6 +444,7 @@ async function createSettings(settingsHtml) {
     });
 
     updateUI();
+    renderPromptPhraseItems();
 }
 
 function onExtensionButtonClick() {
