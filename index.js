@@ -84,7 +84,7 @@ function renderPromptPhraseItems() {
     }
 
     const html = phrases.map((item, index) => `
-        <div class="prompt_phrase_row flex-container flexnowrap flexGap10 marginTop5" data-index="${index}" data-id="${$('<div>').text(item.id).html()}">
+        <div class="prompt_phrase_row flex-container flexnowrap flexGap10 marginTop5" id="${index}" data-index="${index}" data-id="${$('<div>').text(item.id).html()}">
             <div class="prompt_phrase_toggle">
                 <input
                     type="checkbox"
