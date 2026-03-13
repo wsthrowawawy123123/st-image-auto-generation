@@ -10,7 +10,7 @@ import { createImageGenerationState } from './src/imageGenerationState.js';
 
 const extensionName = 'st-image-auto-generation';
 const extensionFolderPath = `/scripts/extensions/third-party/${extensionName}`;
-const NEW_MESSAGE_INSERT_DELAY_MS = 500;
+const NEW_MESSAGE_INSERT_DELAY_MS = 1000;
 
 const INSERT_TYPE = {
     DISABLED: 'disabled',
@@ -895,6 +895,14 @@ async function generateImageTagFromReply(context) {
 - mood: ${sceneMemory.mood || '(unknown)'}`
             : 'Current scene memory: (disabled)';
 
+    console.log(`[${extensionName}] scene continuity context for prompt generation`, {
+        sceneMemoryEnabled: extension_settings[extensionName]?.llmAnalysis?.sceneMemory?.enabled === true,
+        sceneMemory: structuredClone(sceneMemory),
+        latestUserPreview: userText.slice(0, 160),
+        previousAssistantPreview: prevAssistantText.slice(0, 160),
+        latestAssistantPreview: assistantText.slice(0, 160),
+    });
+
     const promptBuilderRequest = `Select the single most visually representative moment from the CURRENT assistant reply.
 
 Convert that moment into concise visual tags for image generation.
@@ -1119,10 +1127,22 @@ async function handleIncomingMessage() {
         return;
     }
 
-    if (Math.random() > sceneEval.weight) {
+    const sceneWeightRoll = Math.random();
+    console.log(`[${extensionName}] scene weight decision`, {
+        currentIndex,
+        category: sceneEval.category,
+        generate: sceneEval.generate,
+        weight: sceneEval.weight,
+        roll: sceneWeightRoll,
+        sceneMemoryEnabled: extension_settings[extensionName]?.llmAnalysis?.sceneMemory?.enabled === true,
+        sceneMemory: structuredClone(sceneMemory),
+    });
+
+    if (sceneWeightRoll > sceneEval.weight) {
         console.log(`[${extensionName}] skipped due to scene weight roll`, {
             currentIndex,
             sceneEval,
+            roll: sceneWeightRoll,
         });
         return;
     }
