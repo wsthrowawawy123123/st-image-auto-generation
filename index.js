@@ -72,9 +72,7 @@ function movePromptPhraseItem(index, direction) {
 
 function renderPromptPhraseItems() {
     const container = $('#prompt_items_container');
-    if (!container.length) {
-        return;
-    }
+    if (!container.length) return;
 
     const phrases = extension_settings[extensionName]?.promptPhrases || [];
 
@@ -83,32 +81,74 @@ function renderPromptPhraseItems() {
         return;
     }
 
-    const html = phrases.map((item, index) => `
-        <div class="prompt_phrase_row flex-container flexnowrap flexGap10 marginTop5" id="${index}" data-index="${index}" data-id="${$('<div>').text(item.id).html()}">
-            <div class="prompt_phrase_toggle">
-                <input
-                    type="checkbox"
-                    id="prompt_phrase_enabled_${index}"
-                    name="prompt_phrase_enabled_${index}"
-                    class="checkbox prompt_phrase_enabled"
-                    autocomplete="off"
-                    ${item.enabled ? 'checked' : ''}
-                >
-            </div>
-            <input
-                type="text"
-                id="prompt_phrase_text_${index}"
-                name="prompt_phrase_text_${index}"
-                class="text_pole flex1 prompt_phrase_text"
-                value="${$('<div>').text(item.text).html()}"
-                placeholder="Enter prompt phrase"
-                autocomplete="off"
+    const html = phrases.map((item, index) => {
+        const rowId = `prompt_phrase_row_${index}`;
+        const checkboxId = `prompt_phrase_enabled_${index}`;
+        const inputId = `prompt_phrase_text_${index}`;
+        const labelId = `prompt_phrase_label_${index}`;
+
+        return `
+            <div
+                id="${rowId}"
+                class="prompt_phrase_row flex-container flexnowrap flexGap10 marginTop5"
+                data-index="${index}"
+                data-id="${escapeHtml(item.id)}"
             >
-            <button type="button" id="prompt_phrase_move_up_${index}" class="menu_button prompt_phrase_move_up" ${index === 0 ? 'disabled' : ''}>Up</button>
-            <button type="button" id="prompt_phrase_move_down_${index}" class="menu_button prompt_phrase_move_down" ${index === phrases.length - 1 ? 'disabled' : ''}>Down</button>
-            <button type="button" id="prompt_phrase_delete_${index}" class="menu_button prompt_phrase_delete">Remove</button>
-        </div>
-    `).join('');
+                <div class="prompt_phrase_toggle">
+                    <input
+                        type="checkbox"
+                        id="${checkboxId}"
+                        class="checkbox prompt_phrase_enabled"
+                        autocomplete="off"
+                        ${item.enabled ? 'checked' : ''}
+                    >
+                    <label for="${checkboxId}" class="sr-only">
+                        Enable prompt phrase ${index + 1}
+                    </label>
+                </div>
+
+                <label id="${labelId}" for="${inputId}" class="sr-only">
+                    Prompt phrase ${index + 1}
+                </label>
+
+                <input
+                    type="text"
+                    id="${inputId}"
+                    class="text_pole flex1 prompt_phrase_text"
+                    value="${escapeHtml(item.text)}"
+                    placeholder="Enter prompt phrase"
+                    autocomplete="off"
+                    aria-labelledby="${labelId}"
+                >
+
+                <button
+                    type="button"
+                    id="prompt_phrase_move_up_${index}"
+                    class="menu_button prompt_phrase_move_up"
+                    ${index === 0 ? 'disabled' : ''}
+                >
+                    Up
+                </button>
+
+                <button
+                    type="button"
+                    id="prompt_phrase_move_down_${index}"
+                    class="menu_button prompt_phrase_move_down"
+                    ${index === phrases.length - 1 ? 'disabled' : ''}
+                >
+                    Down
+                </button>
+
+                <button
+                    type="button"
+                    id="prompt_phrase_delete_${index}"
+                    class="menu_button prompt_phrase_delete"
+                >
+                    Remove
+                </button>
+            </div>
+        `;
+    }).join('');
 
     container.html(html);
 }

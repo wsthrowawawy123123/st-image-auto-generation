@@ -181,22 +181,31 @@
         <hr class="sysHR">
 
         <div>
-            <div class="flex-container flexnowrap">
-                <div class="stimg_checkbox_row">
-                    <span>Enable Prompt Sanitizer</span>
-                    <input type="checkbox" id="llm_analysis_prompt_sanitizer_enabled" name="llm_analysis_prompt_sanitizer_enabled" class="checkbox" autocomplete="off">
-                </div>
+            <div class="flex-container flexnowrap stimg_checkbox_row">
+                <input
+                    type="checkbox"
+                    id="llm_analysis_prompt_sanitizer_enabled"
+                    class="checkbox"
+                    autocomplete="off"
+                >
+                <label for="llm_analysis_prompt_sanitizer_enabled">
+                    Enable Prompt Sanitizer
+                </label>
             </div>
+
             <div class="flex-container flexnowrap flexGap10 alignitemscenter">
-                <div class="flex1">
+                <label for="prompt_phrase_text_0" class="flex1">
                     Prompt Phrases
-                </div>
+                </label>
                 <button id="prompt_item_add" class="menu_button" type="button">Add Item</button>
                 <button id="prompt_items_save" class="menu_button" type="button">Save Phrases</button>
             </div>
-            <small>
+
+            <small id="prompt-phrases-help">
                 Phrases are concatenated in order before the generated image prompt. Click Save Phrases after editing text.
             </small>
+
+            <div id="prompt_items_container" aria-describedby="prompt-phrases-help"></div>
         </div>
 
         <div id="prompt_items_container" class="marginTop10"></div>
