@@ -1001,45 +1001,6 @@ async function generateImageTagFromReply(context) {
     return sceneTags.trim().replace(/^["']|["']$/g, '');
 }
 
-function detectTriggerType(context) {
-    const { latestAssistant, latestUser } =
-        getRecentContextForImageAnalysis(context);
-
-    const text = `${latestUser} ${latestAssistant}`.toLowerCase();
-
-    if (/selfie|send.*pic|send.*photo|take.*picture|show.*picture/.test(text)) {
-        return "selfie";
-    }
-
-    if (/kiss|sex|naked|moan|thrust|straddle|cum|climax/.test(text)) {
-        return "nsfw";
-    }
-
-    if (/eat|food|plate|meal|drink|coffee|restaurant|pizza|burger/.test(text)) {
-        return "food";
-    }
-
-    if (/walks? into|enter|arrive|restaurant|office|room|door/.test(text)) {
-        return "location";
-    }
-
-    if (/touch|grabs|holds|pulls|pushes|leans/.test(text)) {
-        return "interaction";
-    }
-
-    if (Math.random() < 0.15) return "scene";
-    return "none";
-}
-
-function shouldGenerateForTrigger(triggerType) {
-    const probs =
-        extension_settings[extensionName]?.triggerProbabilities || {};
-
-    const chance = probs[triggerType] ?? 0.4;
-
-    return Math.random() <= chance;
-}
-
 async function handleIncomingMessage() {
     if (isImageAnalysisCall) {
         return;
@@ -1080,6 +1041,19 @@ async function handleIncomingMessage() {
         }
 
         sceneEval = await classifyReplyForImage(context);
+
+        const text = message.mes.toLowerCase();
+        const photoRequestRegex =
+            /((send|show|lemme\s*see|let\s*me\s*see|i\s*wanna\s*see|i\s*want\s*to\s*see|can\s*i\s*see|got\s*a?|any)\s*(me\s*)?(a\s*)?(pic|photo|picture|selfie|image|shot)s?)|((take|snap|shoot)\s*(me\s*)?(a\s*)?(pic|photo|picture|selfie))/i;
+
+        if (photoRequestRegex.test(userText)) {
+            sceneEval.weight = 1.0;
+            sceneEval.category = "explicit_request";
+        }
+
+        if (sceneEval.category === "nsfw_action") {
+            sceneEval.weight = Math.max(sceneEval.weight, 0.9);
+        }
 
         console.log(`[${extensionName}] scene eval`, {
             sceneEval,
