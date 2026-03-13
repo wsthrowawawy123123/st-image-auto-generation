@@ -86,13 +86,23 @@ function renderPromptPhraseItems() {
     const html = phrases.map((item, index) => `
         <div class="prompt_phrase_row flex-container flexnowrap flexGap10 marginTop5" data-index="${index}" data-id="${$('<div>').text(item.id).html()}">
             <div class="prompt_phrase_toggle">
-                <input type="checkbox" class="checkbox prompt_phrase_enabled" ${item.enabled ? 'checked' : ''}>
+                <input
+                    type="checkbox"
+                    id="prompt_phrase_enabled_${$('<div>').text(item.id).html()}"
+                    name="prompt_phrase_enabled_${$('<div>').text(item.id).html()}"
+                    class="checkbox prompt_phrase_enabled"
+                    autocomplete="off"
+                    ${item.enabled ? 'checked' : ''}
+                >
             </div>
             <input
                 type="text"
+                id="prompt_phrase_text_${$('<div>').text(item.id).html()}"
+                name="prompt_phrase_text_${$('<div>').text(item.id).html()}"
                 class="text_pole flex1 prompt_phrase_text"
                 value="${$('<div>').text(item.text).html()}"
                 placeholder="Enter prompt phrase"
+                autocomplete="off"
             >
             <button type="button" class="menu_button prompt_phrase_move_up" ${index === 0 ? 'disabled' : ''}>Up</button>
             <button type="button" class="menu_button prompt_phrase_move_down" ${index === phrases.length - 1 ? 'disabled' : ''}>Down</button>
@@ -1198,7 +1208,7 @@ async function sanitizeImagePrompt(rawSceneTags, context) {
             },
         ],
         {
-            max_tokens: Math.max(80, Math.min(settings.promptMaxTokens ?? 120, 120)),
+            max_tokens: Math.max(200, Math.min(settings.promptMaxTokens ?? 400, 400)),
             temperature: Math.min(settings.promptTemperature ?? 0.4, 0.2),
         },
     );
