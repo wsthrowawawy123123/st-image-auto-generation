@@ -84,7 +84,7 @@ function renderPromptPhraseItems() {
     }
 
     const html = phrases.map((item, index) => `
-        <div class="prompt_phrase_row flex-container flexnowrap flexGap10 marginTop5" data-index="${index}">
+        <div class="prompt_phrase_row flex-container flexnowrap flexGap10 marginTop5" data-index="${index}" data-id="${$('<div>').text(item.id).html()}">
             <label class="checkbox_label">
                 <input type="checkbox" class="checkbox prompt_phrase_enabled" ${item.enabled ? 'checked' : ''}>
             </label>
@@ -101,6 +101,24 @@ function renderPromptPhraseItems() {
     `).join('');
 
     container.html(html);
+}
+
+function readPromptPhraseItemsFromDom() {
+    return $('#prompt_items_container .prompt_phrase_row').map(function () {
+        const row = $(this);
+        return {
+            id: String(row.data('id') || ''),
+            enabled: row.find('.prompt_phrase_enabled').prop('checked'),
+            text: String(row.find('.prompt_phrase_text').val() || ''),
+        };
+    }).get();
+}
+
+function savePromptPhraseItemsFromDom() {
+    extension_settings[extensionName].promptPhrases = normalizePromptPhrases(
+        readPromptPhraseItemsFromDom(),
+    );
+    saveSettingsDebounced();
 }
 
 function buildPromptFromPhrases(sceneTags) {
@@ -320,34 +338,19 @@ async function createSettings(settingsHtml) {
     });
 
     $('#prompt_item_add').on('click', function () {
+        savePromptPhraseItemsFromDom();
         extension_settings[extensionName].promptPhrases.push(createPromptPhraseItem(''));
         renderPromptPhraseItems();
         saveSettingsDebounced();
     });
 
-    $('#prompt_items_container').on('input', '.prompt_phrase_text', function () {
-        const index = Number($(this).closest('.prompt_phrase_row').data('index'));
-        const item = extension_settings[extensionName].promptPhrases[index];
-        if (!item) {
-            return;
-        }
-
-        item.text = $(this).val();
-        saveSettingsDebounced();
-    });
-
-    $('#prompt_items_container').on('change', '.prompt_phrase_enabled', function () {
-        const index = Number($(this).closest('.prompt_phrase_row').data('index'));
-        const item = extension_settings[extensionName].promptPhrases[index];
-        if (!item) {
-            return;
-        }
-
-        item.enabled = $(this).prop('checked');
-        saveSettingsDebounced();
+    $('#prompt_items_save').on('click', function () {
+        savePromptPhraseItemsFromDom();
+        toastr.success('Prompt phrases saved');
     });
 
     $('#prompt_items_container').on('click', '.prompt_phrase_move_up', function () {
+        savePromptPhraseItemsFromDom();
         const index = Number($(this).closest('.prompt_phrase_row').data('index'));
         movePromptPhraseItem(index, -1);
         renderPromptPhraseItems();
@@ -355,6 +358,7 @@ async function createSettings(settingsHtml) {
     });
 
     $('#prompt_items_container').on('click', '.prompt_phrase_move_down', function () {
+        savePromptPhraseItemsFromDom();
         const index = Number($(this).closest('.prompt_phrase_row').data('index'));
         movePromptPhraseItem(index, 1);
         renderPromptPhraseItems();
@@ -362,6 +366,7 @@ async function createSettings(settingsHtml) {
     });
 
     $('#prompt_items_container').on('click', '.prompt_phrase_delete', function () {
+        savePromptPhraseItemsFromDom();
         const index = Number($(this).closest('.prompt_phrase_row').data('index'));
         extension_settings[extensionName].promptPhrases.splice(index, 1);
         renderPromptPhraseItems();
