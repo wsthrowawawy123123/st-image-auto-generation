@@ -10,6 +10,7 @@ import { createImageGenerationState } from './src/imageGenerationState.js';
 
 const extensionName = 'st-image-auto-generation';
 const extensionFolderPath = `/scripts/extensions/third-party/${extensionName}`;
+const NEW_MESSAGE_INSERT_DELAY_MS = 500;
 
 const INSERT_TYPE = {
     DISABLED: 'disabled',
@@ -640,6 +641,10 @@ async function refreshLatestMessageSnapshot(delayMs = 150) {
     };
 }
 
+async function waitForNewMessageInsertionWindow() {
+    await new Promise(resolve => setTimeout(resolve, NEW_MESSAGE_INSERT_DELAY_MS));
+}
+
 function safeParseJsonObject(raw) {
     if (!raw || typeof raw !== 'string') {
         return null;
@@ -1160,6 +1165,7 @@ async function handleIncomingMessage() {
         });
 
         if (insertType === INSERT_TYPE.NEW_MESSAGE) {
+            await waitForNewMessageInsertionWindow();
             beginPendingGeneratedImageMessage(context, message, prompt);
         }
 
