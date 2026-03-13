@@ -17,6 +17,8 @@ const INSERT_TYPE = {
     REPLACE: 'replace',
 };
 
+const PENDING_IMAGE_MESSAGE_TTL_MS = 10 * 60 * 1000;
+
 let isImageAnalysisCall = false;
 let lastImageGeneratedAtMessageIndex = -Infinity;
 let pendingGeneratedImageMessage = null;
@@ -665,9 +667,22 @@ function beginPendingGeneratedImageMessage(context, sourceMessage, prompt) {
         sourceText: typeof sourceMessage?.mes === 'string' ? sourceMessage.mes.trim() : '',
         prompt: typeof prompt === 'string' ? prompt.trim() : '',
     };
+
+    console.log(`[${extensionName}] tracking pending generated image message`, {
+        expectedIndex: pendingGeneratedImageMessage.expectedIndex,
+        sourcePreview: pendingGeneratedImageMessage.sourceText.slice(0, 120),
+        promptPreview: pendingGeneratedImageMessage.prompt.slice(0, 120),
+    });
 }
 
 function clearPendingGeneratedImageMessage() {
+    if (pendingGeneratedImageMessage) {
+        console.log(`[${extensionName}] cleared pending generated image message`, {
+            expectedIndex: pendingGeneratedImageMessage.expectedIndex,
+            ageMs: Date.now() - pendingGeneratedImageMessage.createdAt,
+        });
+    }
+
     pendingGeneratedImageMessage = null;
 }
 
@@ -677,7 +692,11 @@ function shouldIgnorePendingGeneratedImageMessage(context, message) {
     }
 
     const ageMs = Date.now() - pendingGeneratedImageMessage.createdAt;
-    if (ageMs >= 30000) {
+    if (ageMs >= PENDING_IMAGE_MESSAGE_TTL_MS) {
+        console.warn(`[${extensionName}] pending generated image message expired`, {
+            expectedIndex: pendingGeneratedImageMessage.expectedIndex,
+            ageMs,
+        });
         clearPendingGeneratedImageMessage();
         return false;
     }
@@ -696,11 +715,27 @@ function shouldIgnorePendingGeneratedImageMessage(context, message) {
         messageText === pendingGeneratedImageMessage.prompt ||
         messageText === pendingGeneratedImageMessage.sourceText
     ) {
+        console.log(`[${extensionName}] ignored self-generated image message`, {
+            currentIndex,
+            expectedIndex: pendingGeneratedImageMessage.expectedIndex,
+            ageMs,
+            hasImageMedia,
+            messageTextEmpty: !messageText,
+            matchedPromptText: messageText === pendingGeneratedImageMessage.prompt,
+            matchedSourceText: messageText === pendingGeneratedImageMessage.sourceText,
+            messagePreview: messageText.slice(0, 120),
+        });
         clearPendingGeneratedImageMessage();
-        console.log(`[${extensionName}] ignored self-generated image message`);
         return true;
     }
 
+    console.log(`[${extensionName}] pending generated image message did not match latest assistant message`, {
+        currentIndex,
+        expectedIndex: pendingGeneratedImageMessage.expectedIndex,
+        ageMs,
+        hasImageMedia,
+        messagePreview: messageText.slice(0, 120),
+    });
     return false;
 }
 
@@ -1042,6 +1077,7 @@ ${assistantText}`;
 
 async function handleIncomingMessage() {
     if (isImageAnalysisCall) {
+        console.log(`[${extensionName}] skipped MESSAGE_RECEIVED because analysis call is already in progress`);
         return;
     }
 
@@ -1049,12 +1085,33 @@ async function handleIncomingMessage() {
         !extension_settings[extensionName] ||
         extension_settings[extensionName].insertType === INSERT_TYPE.DISABLED
     ) {
+        console.log(`[${extensionName}] skipped MESSAGE_RECEIVED because extension is disabled`);
         return;
     }
 
     let { context, message } = await refreshLatestMessageSnapshot();
+    const currentIndex = (context.chat || []).length - 1;
+
+    console.log(`[${extensionName}] MESSAGE_RECEIVED`, {
+        currentIndex,
+        isUser: !!message?.is_user,
+        hasExtra: !!message?.extra,
+        hasImage: !!message?.extra?.image,
+        inlineImage: !!message?.extra?.inline_image,
+        hasImageSwipes: Array.isArray(message?.extra?.image_swipes),
+        alreadyProcessed: !!message?.extra?.imageAutoGenerationProcessed,
+        pendingExpectedIndex: pendingGeneratedImageMessage?.expectedIndex ?? null,
+        pendingAgeMs: pendingGeneratedImageMessage
+            ? Date.now() - pendingGeneratedImageMessage.createdAt
+            : null,
+        messagePreview: typeof message?.mes === 'string' ? message.mes.trim().slice(0, 160) : '',
+    });
 
     if (!message || message.is_user) {
+        console.log(`[${extensionName}] skipped latest message because it is missing or authored by user`, {
+            currentIndex,
+            hasMessage: !!message,
+        });
         return;
     }
 
@@ -1068,6 +1125,9 @@ async function handleIncomingMessage() {
 
     const messageText = typeof message.mes === 'string' ? message.mes.trim() : '';
     if (!messageText) {
+        console.log(`[${extensionName}] skipped latest assistant message because it has no text`, {
+            currentIndex,
+        });
         return;
     }
 
@@ -1076,10 +1136,16 @@ async function handleIncomingMessage() {
         message.extra?.inline_image ||
         Array.isArray(message.extra?.image_swipes)
     ) {
+        console.log(`[${extensionName}] skipped latest assistant message because image media is already attached`, {
+            currentIndex,
+        });
         return;
     }
 
     if (message.extra?.imageAutoGenerationProcessed) {
+        console.log(`[${extensionName}] skipped latest assistant message because it is already marked processed`, {
+            currentIndex,
+        });
         return;
     }
 
@@ -1088,8 +1154,14 @@ async function handleIncomingMessage() {
     }
 
     message.extra.imageAutoGenerationProcessed = true;
+    console.log(`[${extensionName}] marked assistant message as processed before analysis`, {
+        currentIndex,
+    });
 
     if (!extension_settings[extensionName]?.llmAnalysis?.enabled) {
+        console.log(`[${extensionName}] LLM analysis disabled, stopping after processed marker`, {
+            currentIndex,
+        });
         return;
     }
 
@@ -1138,16 +1210,27 @@ async function handleIncomingMessage() {
     }
 
     if (!sceneEval.generate) {
+        console.log(`[${extensionName}] classifier decided not to generate an image`, {
+            currentIndex,
+            sceneEval,
+        });
         return;
     }
 
     if (isOnImageCooldown(context)) {
-        console.log(`[${extensionName}] skipped due to cooldown`);
+        console.log(`[${extensionName}] skipped due to cooldown`, {
+            currentIndex,
+            lastImageGeneratedAtMessageIndex,
+            cooldownMessages: extension_settings[extensionName]?.llmAnalysis?.cooldown?.messages,
+        });
         return;
     }
 
     if (Math.random() > sceneEval.weight) {
-        console.log(`[${extensionName}] skipped due to scene weight roll`, sceneEval);
+        console.log(`[${extensionName}] skipped due to scene weight roll`, {
+            currentIndex,
+            sceneEval,
+        });
         return;
     }
 
@@ -1177,9 +1260,16 @@ async function handleIncomingMessage() {
     console.log(`[${extensionName}] final SD prompt`, prompt);
 
     const insertType = extension_settings[extensionName].insertType;
+    const sdStartAt = Date.now();
 
     try {
         toastr.info('Generating image...');
+        console.log(`[${extensionName}] invoking /sd`, {
+            currentIndex,
+            insertType,
+            quiet: insertType === INSERT_TYPE.NEW_MESSAGE ? 'false' : 'true',
+            promptPreview: prompt.slice(0, 160),
+        });
 
         if (insertType === INSERT_TYPE.NEW_MESSAGE) {
             beginPendingGeneratedImageMessage(context, message, prompt);
@@ -1191,6 +1281,13 @@ async function handleIncomingMessage() {
             },
             prompt,
         );
+
+        console.log(`[${extensionName}] /sd completed`, {
+            currentIndex,
+            insertType,
+            elapsedMs: Date.now() - sdStartAt,
+            hasResult: !!result,
+        });
 
         if (!result) {
             if (insertType === INSERT_TYPE.NEW_MESSAGE) {
@@ -1223,6 +1320,18 @@ async function handleIncomingMessage() {
             const refreshed = await refreshLatestMessageSnapshot(0);
             const generatedMessage = refreshed.chat[pendingGeneratedImageMessage?.expectedIndex];
 
+            console.log(`[${extensionName}] post-/sd refresh for new-message mode`, {
+                expectedIndex: pendingGeneratedImageMessage?.expectedIndex ?? null,
+                refreshedChatLength: refreshed.chat.length,
+                foundGeneratedMessage: !!generatedMessage,
+                generatedPreview: typeof generatedMessage?.mes === 'string'
+                    ? generatedMessage.mes.trim().slice(0, 160)
+                    : '',
+                generatedHasImage: !!generatedMessage?.extra?.image,
+                generatedInlineImage: !!generatedMessage?.extra?.inline_image,
+                generatedHasSwipes: Array.isArray(generatedMessage?.extra?.image_swipes),
+            });
+
             if (generatedMessage) {
                 if (!generatedMessage.extra) {
                     generatedMessage.extra = {};
@@ -1241,6 +1350,12 @@ async function handleIncomingMessage() {
         if (insertType === INSERT_TYPE.NEW_MESSAGE) {
             clearPendingGeneratedImageMessage();
         }
+        console.error(`[${extensionName}] /sd failed`, {
+            currentIndex,
+            insertType,
+            elapsedMs: Date.now() - sdStartAt,
+            error,
+        });
         toastr.error(`Image generation error: ${error}`);
         console.error(`[${extensionName}] SD generation failed`, error);
     }
