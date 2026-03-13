@@ -88,8 +88,8 @@ function renderPromptPhraseItems() {
             <div class="prompt_phrase_toggle">
                 <input
                     type="checkbox"
-                    id="prompt_phrase_enabled_${$('<div>').text(item.id).html()}"
-                    name="prompt_phrase_enabled_${$('<div>').text(item.id).html()}"
+                    id="prompt_phrase_enabled_${index}"
+                    name="prompt_phrase_enabled_${index}"
                     class="checkbox prompt_phrase_enabled"
                     autocomplete="off"
                     ${item.enabled ? 'checked' : ''}
@@ -97,16 +97,16 @@ function renderPromptPhraseItems() {
             </div>
             <input
                 type="text"
-                id="prompt_phrase_text_${$('<div>').text(item.id).html()}"
-                name="prompt_phrase_text_${$('<div>').text(item.id).html()}"
+                id="prompt_phrase_text_${index}"
+                name="prompt_phrase_text_${index}"
                 class="text_pole flex1 prompt_phrase_text"
                 value="${$('<div>').text(item.text).html()}"
                 placeholder="Enter prompt phrase"
                 autocomplete="off"
             >
-            <button type="button" class="menu_button prompt_phrase_move_up" ${index === 0 ? 'disabled' : ''}>Up</button>
-            <button type="button" class="menu_button prompt_phrase_move_down" ${index === phrases.length - 1 ? 'disabled' : ''}>Down</button>
-            <button type="button" class="menu_button prompt_phrase_delete">Remove</button>
+            <button type="button" id="prompt_phrase_move_up_${index}" class="menu_button prompt_phrase_move_up" ${index === 0 ? 'disabled' : ''}>Up</button>
+            <button type="button" id="prompt_phrase_move_down_${index}" class="menu_button prompt_phrase_move_down" ${index === phrases.length - 1 ? 'disabled' : ''}>Down</button>
+            <button type="button" id="prompt_phrase_delete_${index}" class="menu_button prompt_phrase_delete">Remove</button>
         </div>
     `).join('');
 
