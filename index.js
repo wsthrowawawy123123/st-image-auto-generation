@@ -926,33 +926,33 @@ async function extractScenePatch(context) {
 
     const patchPrompt = `Extract the current visual scene state update from the CURRENT assistant reply.
 
-Return JSON only with this exact schema:
-{
-  "location": "",
-  "environment": "",
-  "assistantPose": "",
-  "assistantClothing": "",
-  "assistantExpression": "",
-  "interaction": "",
-  "props": [],
-  "lighting": "",
-  "mood": ""
-}
+    Return JSON only with this exact schema:
+    {
+    "location": "",
+    "environment": "",
+    "assistantPose": "",
+    "assistantClothing": "",
+    "assistantExpression": "",
+    "interaction": "",
+    "props": [],
+    "lighting": "",
+    "mood": ""
+    }
 
-Rules:
-- Only include fields that are explicitly stated or strongly implied by the CURRENT assistant reply.
-- If a field did not change or is unclear, leave it as an empty string, or [] for props.
-- Do not invent details.
-- Use Previous assistant context only to resolve ambiguity.
-- Respond with JSON only.
-- Do not include markdown fences.
-- Do not include explanation text.
+    Rules:
+    - Only include fields that are explicitly stated or strongly implied by the CURRENT assistant reply.
+    - If a field did not change or is unclear, leave it as an empty string, or [] for props.
+    - Do not invent details.
+    - Use Previous assistant context only to resolve ambiguity.
+    - Respond with JSON only.
+    - Do not include markdown fences.
+    - Do not include explanation text.
 
-Previous assistant context:
-${prevAssistantText || '(none)'}
+    Previous assistant context:
+    ${prevAssistantText || '(none)'}
 
-Current assistant reply:
-${assistantText}`;
+    Current assistant reply:
+    ${assistantText}`;
 
     const result = await callChat(
         [
@@ -972,12 +972,16 @@ ${assistantText}`;
         },
     );
 
+    console.log(`[${extensionName}] extracted scene patch raw`, result);
+
     const parsed = safeParseJsonObject(result);
 
     if (!parsed) {
         console.warn(`[${extensionName}] failed to parse scene patch JSON`, result);
         return null;
     }
+
+    console.log(`[${extensionName}] extracted scene patch parsed`, parsed);
 
     return {
         location: typeof parsed?.location === 'string' ? parsed.location.trim() : '',
@@ -1269,8 +1273,10 @@ async function handleIncomingMessage() {
 
         if (extension_settings[extensionName]?.llmAnalysis?.sceneMemory?.enabled) {
             const patch = await extractScenePatch(context);
+            console.log(`[${extensionName}] scene memory before merge`, structuredClone(sceneMemory));
+            console.log(`[${extensionName}] scene patch before merge`, structuredClone(patch));
             mergeScenePatch(patch);
-            console.log(`[${extensionName}] merged scene memory`, structuredClone(sceneMemory));
+            console.log(`[${extensionName}] scene memory after merge`, structuredClone(sceneMemory));
         }
 
         sceneEval = await classifyReplyForImage(context);
