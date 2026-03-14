@@ -14,10 +14,61 @@ export function createImageGenerationState({
         return pendingGeneratedImageMessage;
     }
 
-    function isOnCooldown({ chatLength, cooldownMessages }) {
+    function getCooldownDecision({
+        chatLength,
+        cooldownMessages,
+        random = Math.random,
+    }) {
         const currentIndex = chatLength - 1;
         const minMessagesBetweenImages = Number(cooldownMessages) || 0;
-        return (currentIndex - lastImageGeneratedAtMessageIndex) < minMessagesBetweenImages;
+        const distance = currentIndex - lastImageGeneratedAtMessageIndex;
+
+        if (!Number.isFinite(minMessagesBetweenImages) || minMessagesBetweenImages <= 0) {
+            return {
+                skip: false,
+                reason: 'disabled',
+                distance,
+                roll: null,
+                threshold: null,
+            };
+        }
+
+        if (distance >= minMessagesBetweenImages) {
+            return {
+                skip: false,
+                reason: 'window_passed',
+                distance,
+                roll: null,
+                threshold: null,
+            };
+        }
+
+        if (distance <= 1) {
+            return {
+                skip: true,
+                reason: 'hard_cooldown',
+                distance,
+                roll: null,
+                threshold: 1,
+            };
+        }
+
+        const remainingWindow = minMessagesBetweenImages - distance;
+        const probabilisticSlots = Math.max(1, minMessagesBetweenImages - 2);
+        const threshold = Math.min(0.95, remainingWindow / (probabilisticSlots + 1));
+        const roll = random();
+
+        return {
+            skip: roll < threshold,
+            reason: 'hybrid_cooldown',
+            distance,
+            roll,
+            threshold,
+        };
+    }
+
+    function isOnCooldown({ chatLength, cooldownMessages, random }) {
+        return getCooldownDecision({ chatLength, cooldownMessages, random }).skip;
     }
 
     function markImageGenerated({ chatLength }) {
@@ -130,6 +181,7 @@ export function createImageGenerationState({
     return {
         beginPendingGeneratedImageMessage,
         clearPendingGeneratedImageMessage,
+        getCooldownDecision,
         getLastImageGeneratedAtMessageIndex,
         getPendingGeneratedImageMessage,
         isOnCooldown,

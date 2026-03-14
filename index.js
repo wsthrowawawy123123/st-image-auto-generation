@@ -556,10 +556,10 @@ function isOnImageCooldown(context) {
     const cooldown = llmSettings.cooldown || {};
 
     if (!cooldown.enabled) {
-        return false;
+        return { skip: false, reason: 'disabled' };
     }
 
-    return imageGenerationState.isOnCooldown({
+    return imageGenerationState.getCooldownDecision({
         chatLength: (context.chat || []).length,
         cooldownMessages: cooldown.messages,
     });
@@ -832,12 +832,14 @@ async function handleIncomingMessage() {
         return;
     }
 
-    if (isOnImageCooldown(context)) {
+    const cooldownDecision = isOnImageCooldown(context);
+    if (cooldownDecision.skip) {
         console.log(`[${extensionName}] skipped due to cooldown`, {
             currentIndex,
             lastImageGeneratedAtMessageIndex:
                 imageGenerationState.getLastImageGeneratedAtMessageIndex(),
             cooldownMessages: extension_settings[extensionName]?.llmAnalysis?.cooldown?.messages,
+            cooldownDecision,
         });
         return;
     }

@@ -114,6 +114,36 @@ test('cooldown compares against the last generated message index', () => {
     );
 });
 
+test('hybrid cooldown hard-skips the first follow-up message, then becomes probabilistic', () => {
+    const state = createImageGenerationState();
+
+    state.markImageGenerated({ chatLength: 5 });
+
+    const hardCooldown = state.getCooldownDecision({
+        chatLength: 6,
+        cooldownMessages: 4,
+        random: () => 0.99,
+    });
+    assert.equal(hardCooldown.skip, true);
+    assert.equal(hardCooldown.reason, 'hard_cooldown');
+
+    const probabilisticSkip = state.getCooldownDecision({
+        chatLength: 7,
+        cooldownMessages: 4,
+        random: () => 0.2,
+    });
+    assert.equal(probabilisticSkip.skip, true);
+    assert.equal(probabilisticSkip.reason, 'hybrid_cooldown');
+
+    const probabilisticPass = state.getCooldownDecision({
+        chatLength: 7,
+        cooldownMessages: 4,
+        random: () => 0.8,
+    });
+    assert.equal(probabilisticPass.skip, false);
+    assert.equal(probabilisticPass.reason, 'hybrid_cooldown');
+});
+
 test('can ignore based on prompt or source text matches when indexes do not line up', () => {
     const state = createImageGenerationState();
 
