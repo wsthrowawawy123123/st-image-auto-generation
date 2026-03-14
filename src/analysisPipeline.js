@@ -25,6 +25,19 @@ function safeParseJsonObject(raw) {
     return null;
 }
 
+function cleanSanitizedTagOutput(raw) {
+    if (typeof raw !== 'string') {
+        return '';
+    }
+
+    let cleaned = raw.trim().replace(/^["']|["']$/g, '');
+    cleaned = cleaned.split(/\n\s*\n/)[0];
+    cleaned = cleaned.split(/\n/)[0];
+    cleaned = cleaned.replace(/\s*Note:.*$/i, '').trim();
+
+    return cleaned;
+}
+
 export function createAnalysisPipeline({
     extensionName,
     getSettings,
@@ -329,6 +342,9 @@ ${assistantText}`;
     - drop non-visual bodily sensations or internal states like shaky legs, nervousness, arousal, anticipation
     - rewrite vague expression tags into visible facial cues when possible, like smiling, parted lips, looking away
     - do not add new details
+    - output exactly one line of comma-separated tags
+    - do not include notes, explanations, reasoning, labels, or any extra text before or after the tags
+    - if you add anything other than comma-separated tags, the output is invalid
     - do not write sentences
     - do not use quotes
     - respond with tags only
@@ -359,7 +375,7 @@ ${assistantText}`;
             },
         );
 
-        return result.trim().replace(/^["']|["']$/g, '');
+        return cleanSanitizedTagOutput(result);
     }
 
     return {
