@@ -1275,7 +1275,7 @@ async function handleIncomingMessage() {
             const patch = await extractScenePatch(context);
             console.log(`[${extensionName}] scene memory before merge`, structuredClone(sceneMemory));
             console.log(`[${extensionName}] scene patch before merge`, structuredClone(patch));
-            mergeScenePatch(patch);
+            mergeScenePatch(sceneMemory, patch);
             console.log(`[${extensionName}] scene memory after merge`, structuredClone(sceneMemory));
         }
 
