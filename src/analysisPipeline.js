@@ -159,8 +159,12 @@ ${assistantText}`;
     }
 
     Rules:
+    - Return only changed or newly introduced fields from the CURRENT assistant reply.
+    - Do not restate, rephrase, summarize, or paraphrase details that are already part of the ongoing scene unless the CURRENT assistant reply clearly changes them.
     - Only include fields that are explicitly stated or strongly implied by the CURRENT assistant reply.
-    - If a field did not change or is unclear, leave it as an empty string, or [] for props.
+    - If a field did not clearly change or is unclear, leave it as an empty string, or [] for props.
+    - Treat assistantClothing, location, environment, and lighting as sticky fields that should change only with clear explicit evidence in the CURRENT assistant reply.
+    - Do not convert the same scene detail into new wording just because it was described differently.
     - Do not invent details.
     - Use Previous assistant context only to resolve ambiguity.
     - Respond with JSON only.
