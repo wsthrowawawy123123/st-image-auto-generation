@@ -73,3 +73,59 @@ test('buildSceneMemoryAnchorTags emits stable visual anchors in priority order',
         'white blouse, blue jeans, sitting on barstool, soft smile, holding hands, modern kitchen island, city apartment, warm ambient lighting, ice cream, water glass',
     );
 });
+
+test('createEmptySceneMemory returns the expected blank shape', () => {
+    assert.deepEqual(createEmptySceneMemory(), {
+        location: '',
+        environment: '',
+        assistantPose: '',
+        assistantClothing: '',
+        assistantExpression: '',
+        interaction: '',
+        props: [],
+        lighting: '',
+        mood: '',
+    });
+});
+
+test('mergeScenePatch ignores null patches and empty updates', () => {
+    const sceneMemory = {
+        ...createEmptySceneMemory(),
+        location: 'city apartment',
+        assistantClothing: 'white blouse, blue jeans',
+        props: ['water glass'],
+        lighting: 'warm ambient lighting',
+    };
+
+    mergeScenePatch(sceneMemory, null);
+    mergeScenePatch(sceneMemory, {
+        location: '',
+        assistantClothing: '   ',
+        props: [],
+        lighting: '',
+    });
+
+    assert.deepEqual(sceneMemory, {
+        ...createEmptySceneMemory(),
+        location: 'city apartment',
+        assistantClothing: 'white blouse, blue jeans',
+        props: ['water glass'],
+        lighting: 'warm ambient lighting',
+    });
+});
+
+test('buildSceneMemoryAnchorTags omits empty fields and trims comma spacing', () => {
+    const sceneMemory = {
+        ...createEmptySceneMemory(),
+        assistantClothing: 'white blouse, blue jeans',
+        environment: '',
+        location: 'city apartment',
+        props: [],
+        lighting: 'warm ambient lighting',
+    };
+
+    assert.equal(
+        buildSceneMemoryAnchorTags(sceneMemory),
+        'white blouse, blue jeans, city apartment, warm ambient lighting',
+    );
+});

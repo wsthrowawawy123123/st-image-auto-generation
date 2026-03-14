@@ -13,10 +13,11 @@ import {
     normalizePromptPhrases,
 } from './src/promptPhraseUtils.js';
 import {
-    buildSceneMemoryAnchorTags,
     createEmptySceneMemory,
     mergeScenePatch,
 } from './src/sceneMemory.js';
+import { createChatCaller } from './src/chatBackends.js';
+import { createAnalysisPipeline } from './src/analysisPipeline.js';
 
 const extensionName = 'st-image-auto-generation';
 const extensionFolderPath = `/scripts/extensions/third-party/${extensionName}`;
@@ -28,9 +29,13 @@ const INSERT_TYPE = {
     NEW_MESSAGE: 'new',
 };
 
+const PHOTO_REQUEST_REGEX =
+    /((send|show|lemme\s*see|let\s*me\s*see|i\s*wanna\s*see|i\s*want\s*to\s*see|can\s*i\s*see|got\s*a?|any)\s*(me\s*)?(a\s*)?(pic|photo|picture|selfie|image|shot)s?)|((take|snap|shoot)\s*(me\s*)?(a\s*)?(pic|photo|picture|selfie))/i;
+
 let isImageAnalysisCall = false;
 const imageGenerationState = createImageGenerationState();
 let sceneMemory = createEmptySceneMemory();
+const getLlmSettings = () => extension_settings[extensionName]?.llmAnalysis || {};
 
 function movePromptPhraseItem(index, direction) {
     const phrases = extension_settings[extensionName]?.promptPhrases;
@@ -472,206 +477,56 @@ function preprocessForImagePrompt(text) {
     return cleaned;
 }
 
-eventSource.on(event_types.MESSAGE_RECEIVED, handleIncomingMessage);
+function getImageAnalysisTextContext(context) {
+    const { latestAssistant, latestUser, previousAssistant } =
+        getRecentContextForImageAnalysis(context);
 
-async function callRunpodBackend(endpoint, apiKey, model, messages, options = {}) {
-    const settings = extension_settings[extensionName]?.llmAnalysis || {};
-
-    const max_tokens = options.max_tokens ?? settings.promptMaxTokens ?? 120;
-    const temperature = options.temperature ?? settings.promptTemperature ?? 0.4;
-
-    const requestBody = {
-        input: {
-            model,
-            messages,
-            max_tokens,
-            temperature,
-        },
+    return {
+        latestAssistant,
+        latestUser,
+        previousAssistant,
+        assistantText: preprocessForImagePrompt(latestAssistant),
+        latestUserText: preprocessForImagePrompt(latestUser),
+        previousAssistantText: preprocessForImagePrompt(previousAssistant),
     };
-
-    const response = await fetch(endpoint, {
-        method: 'POST',
-        headers: {
-            'Content-Type': 'application/json',
-            ...(apiKey ? { Authorization: `Bearer ${apiKey}` } : {}),
-        },
-        body: JSON.stringify(requestBody),
-    });
-
-    if (!response.ok) {
-        const text = await response.text();
-        throw new Error(`Runpod chat error ${response.status}: ${text}`);
-    }
-
-    let data = await response.json();
-    console.log(`[${extensionName}] Runpod raw response`, data);
-
-    if (data?.status && data.status !== 'COMPLETED') {
-        const jobId = data?.id;
-        if (!jobId) {
-            throw new Error('Runpod returned queued job without id');
-        }
-
-        const baseUrl = endpoint.replace(/\/runsync$/, '').replace(/\/run$/, '');
-        const statusUrl = `${baseUrl}/status/${jobId}`;
-
-        let retries = 0;
-        const maxRetries = 30;
-
-        while (retries < maxRetries) {
-            await new Promise(r => setTimeout(r, 1000));
-
-            const statusResp = await fetch(statusUrl, {
-                method: 'GET',
-                headers: {
-                    'Content-Type': 'application/json',
-                    ...(apiKey ? { Authorization: `Bearer ${apiKey}` } : {}),
-                },
-            });
-
-            if (!statusResp.ok) {
-                const text = await statusResp.text();
-                throw new Error(`Runpod status error ${statusResp.status}: ${text}`);
-            }
-
-            data = await statusResp.json();
-            console.log(`[${extensionName}] Runpod status response`, data);
-
-            if (data?.status === 'COMPLETED') {
-                break;
-            }
-
-            if (
-                data?.status === 'FAILED' ||
-                data?.status === 'CANCELLED' ||
-                data?.status === 'TIMED_OUT'
-            ) {
-                throw new Error(`Runpod job ended with status: ${data.status}`);
-            }
-
-            retries++;
-        }
-
-        if (data?.status !== 'COMPLETED') {
-            throw new Error('Runpod job did not complete in time');
-        }
-    }
-
-    const tokens = data?.output?.[0]?.choices?.[0]?.tokens;
-    if (Array.isArray(tokens)) {
-        return tokens.join('').trim();
-    }
-
-    const content = data?.output?.[0]?.choices?.[0]?.message?.content;
-    if (typeof content === 'string') {
-        return content.trim();
-    }
-
-    const text = data?.output?.[0]?.choices?.[0]?.text;
-    if (typeof text === 'string') {
-        return text.trim();
-    }
-
-    console.warn(`[${extensionName}] Runpod completed without parseable output`, data);
-    return '';
 }
 
-async function callOpenAICompatibleBackend(endpoint, apiKey, model, messages, options = {}) {
-    const response = await fetch(endpoint, {
-        method: 'POST',
-        headers: {
-            'Content-Type': 'application/json',
-            ...(apiKey ? { Authorization: `Bearer ${apiKey}` } : {}),
-        },
-        body: JSON.stringify({
-            ...(model ? { model } : {}),
-            messages,
-            max_tokens: options.max_tokens ?? 80,
-            temperature: options.temperature ?? 0.1,
-        }),
-    });
-
-    if (!response.ok) {
-        const text = await response.text();
-        throw new Error(`OpenAI-compatible chat error ${response.status}: ${text}`);
-    }
-
-    const data = await response.json();
-
-    return (
-        data?.choices?.[0]?.message?.content ??
-        data?.choices?.[0]?.text ??
-        ''
-    ).trim();
+function normalizeScenePatch(parsed) {
+    return {
+        location: typeof parsed?.location === 'string' ? parsed.location.trim() : '',
+        environment: typeof parsed?.environment === 'string' ? parsed.environment.trim() : '',
+        assistantPose: typeof parsed?.assistantPose === 'string' ? parsed.assistantPose.trim() : '',
+        assistantClothing: typeof parsed?.assistantClothing === 'string' ? parsed.assistantClothing.trim() : '',
+        assistantExpression: typeof parsed?.assistantExpression === 'string' ? parsed.assistantExpression.trim() : '',
+        interaction: typeof parsed?.interaction === 'string' ? parsed.interaction.trim() : '',
+        props: Array.isArray(parsed?.props)
+            ? parsed.props.filter(x => typeof x === 'string').map(x => x.trim()).filter(Boolean)
+            : [],
+        lighting: typeof parsed?.lighting === 'string' ? parsed.lighting.trim() : '',
+        mood: typeof parsed?.mood === 'string' ? parsed.mood.trim() : '',
+    };
 }
 
-async function callKoboldBackend(endpoint, apiKey, model, messages, options = {}) {
-    const response = await fetch(endpoint, {
-        method: 'POST',
-        headers: {
-            'Content-Type': 'application/json',
-            ...(apiKey ? { Authorization: `Bearer ${apiKey}` } : {}),
-        },
-        body: JSON.stringify({
-            ...(model ? { model } : {}),
-            messages,
-            max_tokens: options.max_tokens ?? 8,
-            temperature: options.temperature ?? 0.1,
-        }),
-    });
+const callChat = createChatCaller({
+    extensionName,
+    getSettings: getLlmSettings,
+});
 
-    if (!response.ok) {
-        const text = await response.text();
-        throw new Error(`Kobold chat error ${response.status}: ${text}`);
-    }
+const {
+    classifyReplyForImage,
+    extractScenePatch,
+    generateImageTagFromReply,
+    sanitizeImagePrompt,
+} = createAnalysisPipeline({
+    extensionName,
+    getSettings: getLlmSettings,
+    getSceneMemory: () => sceneMemory,
+    getImageAnalysisTextContext,
+    normalizeScenePatch,
+    callChat,
+});
 
-    const data = await response.json();
-
-    return (
-        data?.choices?.[0]?.message?.content ??
-        data?.choices?.[0]?.text ??
-        ''
-    ).trim();
-}
-
-async function callChat(messages, options = {}) {
-    const settings = extension_settings[extensionName]?.llmAnalysis || {};
-    const useClassifierBackend = options.useClassifierBackend === true;
-
-    const backend = useClassifierBackend
-        ? (settings.classifierBackend || 'kobold')
-        : 'runpod';
-
-    const endpoint = useClassifierBackend
-        ? (settings.classifierEndpoint || settings.endpoint)
-        : settings.endpoint;
-
-    const apiKey = useClassifierBackend
-        ? (settings.classifierApiKey || settings.apiKey)
-        : settings.apiKey;
-
-    const model = useClassifierBackend
-        ? (settings.classifierModel || settings.model)
-        : settings.model;
-
-    if (!endpoint) {
-        throw new Error(`Missing endpoint for backend: ${backend}`);
-    }
-
-    if (backend === 'runpod') {
-        return await callRunpodBackend(endpoint, apiKey, model, messages, options);
-    }
-
-    if (backend === 'kobold') {
-        return await callKoboldBackend(endpoint, apiKey, model, messages, options);
-    }
-
-    if (backend === 'openai') {
-        return await callOpenAICompatibleBackend(endpoint, apiKey, model, messages, options);
-    }
-
-    throw new Error(`Unsupported backend: ${backend}`);
-}
+eventSource.on(event_types.MESSAGE_RECEIVED, handleIncomingMessage);
 
 function getRecentContextForImageAnalysis(context) {
     const settings = extension_settings[extensionName]?.llmAnalysis || {};
@@ -832,342 +687,6 @@ function safeParseJsonObject(raw) {
     return null;
 }
 
-async function classifyReplyForImage(context) {
-    const settings = extension_settings[extensionName]?.llmAnalysis || {};
-    const { latestAssistant, previousAssistant } =
-        getRecentContextForImageAnalysis(context);
-
-    const assistantText = preprocessForImagePrompt(latestAssistant);
-    const prevAssistantText = preprocessForImagePrompt(previousAssistant);
-
-    const evaluatorPrompt = `Evaluate the CURRENT assistant reply for image generation.
-
-Return JSON only with this exact schema:
-{"generate":true,"category":"nsfw_action","weight":0.95}
-
-Valid categories:
-- "nsfw_action"
-- "selfie_request"
-- "location_change"
-- "food_or_object_focus"
-- "physical_interaction"
-- "pose_change"
-- "ambient_scene"
-- "dialogue_only"
-
-Rules:
-- Base the judgment primarily on the CURRENT assistant reply.
-- Use Previous assistant context only to resolve ambiguity.
-- Evaluate the currently visible moment, not the broader relationship arc or what may have happened immediately before.
-- "generate" should be false only when the reply is not visually worth illustrating.
-- "weight" must be a number between 0.0 and 1.0.
-- Use "nsfw_action" only when the CURRENT assistant reply describes explicit ongoing sexual activity, explicit sexual contact, or clearly visible nudity/exposure in the present moment.
-- Do not use "nsfw_action" for aftermath, lingering attraction, romantic tension, affectionate hand-holding, kissing that is not explicit, or scene transitions after intimacy. Those should usually be "physical_interaction", "pose_change", or "ambient_scene".
-- Do not use "nsfw_action" for flirtation, suggestive atmosphere, partial undressing, teasing behavior, knowing looks, or seductive setup unless explicit sexual contact or explicit exposure is already happening in the current visible moment.
-- If explicit sexual content is mentioned only as past context, aftermath, explanation, memory, or emotional carryover, do not use "nsfw_action".
-- If the present-moment frame is mainly entering a room, walking together, looking around, removing shoes, adjusting clothing, holding hands, smiling, or observing the environment, prefer "physical_interaction", "pose_change", or "ambient_scene".
-- Sexual or intimate physical action that is explicit in the current moment should usually be high weight.
-- Clear requests for photos/selfies should usually be weight 1.0.
-- Major scene/location changes should usually be high weight.
-- Pure dialogue with no visible narration should be generate=false and weight=0.0.
-- Respond with JSON only.
-- Do not include markdown fences.
-- Do not include explanation text.
-
-Previous assistant context:
-${prevAssistantText || '(none)'}
-
-Current assistant reply:
-${assistantText}`;
-
-    const result = await callChat(
-        [
-            {
-                role: 'system',
-                content: 'You evaluate visual importance for image generation. Return only valid JSON.',
-            },
-            {
-                role: 'user',
-                content: evaluatorPrompt,
-            },
-        ],
-        {
-            useClassifierBackend: settings.classifierUseSeparateBackend === true,
-            max_tokens: settings.classifierMaxTokens ?? 80,
-            temperature: settings.classifierTemperature ?? 0.1,
-        },
-    );
-
-    const parsed = safeParseJsonObject(result);
-
-    if (!parsed) {
-        console.warn(`[${extensionName}] failed to parse scene weighting JSON`, result);
-        return {
-            generate: false,
-            category: 'dialogue_only',
-            weight: 0,
-        };
-    }
-
-    return {
-        generate: parsed?.generate === true,
-        category: typeof parsed?.category === 'string' ? parsed.category : 'dialogue_only',
-        weight: Math.max(0, Math.min(1, Number(parsed?.weight) || 0)),
-    };
-}
-
-async function extractScenePatch(context) {
-    const settings = extension_settings[extensionName]?.llmAnalysis || {};
-    const { latestAssistant, previousAssistant } =
-        getRecentContextForImageAnalysis(context);
-
-    const assistantText = preprocessForImagePrompt(latestAssistant);
-    const prevAssistantText = preprocessForImagePrompt(previousAssistant);
-
-    const patchPrompt = `Extract the current visual scene state update from the CURRENT assistant reply.
-
-    Return JSON only with this exact schema:
-    {
-    "location": "",
-    "environment": "",
-    "assistantPose": "",
-    "assistantClothing": "",
-    "assistantExpression": "",
-    "interaction": "",
-    "props": [],
-    "lighting": "",
-    "mood": ""
-    }
-
-    Rules:
-    - Only include fields that are explicitly stated or strongly implied by the CURRENT assistant reply.
-    - If a field did not change or is unclear, leave it as an empty string, or [] for props.
-    - Do not invent details.
-    - Use Previous assistant context only to resolve ambiguity.
-    - Respond with JSON only.
-    - Do not include markdown fences.
-    - Do not include explanation text.
-
-    Previous assistant context:
-    ${prevAssistantText || '(none)'}
-
-    Current assistant reply:
-    ${assistantText}`;
-
-    const result = await callChat(
-        [
-            {
-                role: 'system',
-                content: 'You extract visual scene state updates. Return only valid JSON.',
-            },
-            {
-                role: 'user',
-                content: patchPrompt,
-            },
-        ],
-        {
-            useClassifierBackend: settings.classifierUseSeparateBackend === true,
-            max_tokens: Math.max(settings.classifierMaxTokens ?? 80, 160),
-            temperature: settings.classifierTemperature ?? 0.1,
-        },
-    );
-
-    console.log(`[${extensionName}] extracted scene patch raw`, result);
-
-    const parsed = safeParseJsonObject(result);
-
-    if (!parsed) {
-        console.warn(`[${extensionName}] failed to parse scene patch JSON`, result);
-        return null;
-    }
-
-    console.log(`[${extensionName}] extracted scene patch parsed`, parsed);
-
-    return {
-        location: typeof parsed?.location === 'string' ? parsed.location.trim() : '',
-        environment: typeof parsed?.environment === 'string' ? parsed.environment.trim() : '',
-        assistantPose: typeof parsed?.assistantPose === 'string' ? parsed.assistantPose.trim() : '',
-        assistantClothing: typeof parsed?.assistantClothing === 'string' ? parsed.assistantClothing.trim() : '',
-        assistantExpression: typeof parsed?.assistantExpression === 'string' ? parsed.assistantExpression.trim() : '',
-        interaction: typeof parsed?.interaction === 'string' ? parsed.interaction.trim() : '',
-        props: Array.isArray(parsed?.props)
-            ? parsed.props.filter(x => typeof x === 'string').map(x => x.trim()).filter(Boolean)
-            : [],
-        lighting: typeof parsed?.lighting === 'string' ? parsed.lighting.trim() : '',
-        mood: typeof parsed?.mood === 'string' ? parsed.mood.trim() : '',
-    };
-}
-
-
-async function generateImageTagFromReply(context) {
-    const settings = extension_settings[extensionName]?.llmAnalysis || {};
-    const { latestAssistant, previousAssistant } =
-        getRecentContextForImageAnalysis(context);
-
-    const assistantText = preprocessForImagePrompt(latestAssistant);
-    const prevAssistantText = preprocessForImagePrompt(previousAssistant);
-
-    const memoryBlock =
-        extension_settings[extensionName]?.llmAnalysis?.sceneMemory?.enabled
-            ? `Current scene memory:
-- location: ${sceneMemory.location || '(unknown)'}
-- environment: ${sceneMemory.environment || '(unknown)'}
-- assistant pose: ${sceneMemory.assistantPose || '(unknown)'}
-- assistant clothing: ${sceneMemory.assistantClothing || '(unknown)'}
-- assistant expression: ${sceneMemory.assistantExpression || '(unknown)'}
-- interaction: ${sceneMemory.interaction || '(unknown)'}
-- props: ${sceneMemory.props?.length ? sceneMemory.props.join(', ') : '(none)'}
-- lighting: ${sceneMemory.lighting || '(unknown)'}
-- mood: ${sceneMemory.mood || '(unknown)'}`
-            : 'Current scene memory: (disabled)';
-
-    console.log(`[${extensionName}] scene continuity context for prompt generation`, {
-        sceneMemoryEnabled: extension_settings[extensionName]?.llmAnalysis?.sceneMemory?.enabled === true,
-        sceneMemory: structuredClone(sceneMemory),
-        previousAssistantPreview: prevAssistantText.slice(0, 160),
-        latestAssistantPreview: assistantText.slice(0, 160),
-    });
-
-    const promptBuilderRequest = `Select the single most visually representative moment from the CURRENT assistant reply.
-
-Convert that moment into concise visual tags for image generation.
-
-Base the tags primarily on the CURRENT assistant reply.
-Use Previous assistant context only to resolve ambiguity or maintain scene continuity.
-Use Current scene memory to preserve stable details unless the CURRENT assistant reply clearly changes them.
-
-Rules:
-- comma separated
-- 1–4 words per tag
-- 6–12 tags total
-- no sentences
-- no explanations
-- no markup
-- only visible elements
-- do not invent details not clearly visible
-- preserve continuity with scene memory unless explicitly changed
-
-Perspective rule:
-If the narration addresses "you" or is written from the assistant's point of view,
-include the tag: first person perspective.
-Otherwise use third person perspective if the scene is externally observed.
-
-Prefer body position tags like: kneeling pose, sitting pose, leaning pose, straddling pose.
-
-Tag priority order:
-1. camera or perspective
-2. body position or pose
-3. facial expression or gaze
-4. clothing state or exposure
-5. physical contact or interaction
-6. environment or furniture
-7. lighting or atmosphere
-
-Prefer static visual states over motion verbs.
-
-Example output:
-first person perspective, kneeling pose, looking up, open blouse, office desk, warm lighting
-
-${memoryBlock}
-
-Previous assistant context:
-${prevAssistantText || '(none)'}
-
-Current assistant reply:
-${assistantText}`;
-
-    const sceneTags = await callChat(
-        [
-            {
-                role: 'system',
-                content: 'You convert scene narration into concise visual tags for image generation.',
-            },
-            {
-                role: 'user',
-                content: promptBuilderRequest,
-            },
-        ],
-        {
-            max_tokens: settings.promptMaxTokens ?? 120,
-            temperature: settings.promptTemperature ?? 0.4,
-        },
-    );
-
-    return sceneTags.trim().replace(/^["']|["']$/g, '');
-}
-
-async function sanitizeImagePrompt(rawSceneTags, context) {
-    const settings = extension_settings[extensionName]?.llmAnalysis || {};
-    if (!settings.promptSanitizer?.enabled) {
-        return rawSceneTags;
-    }
-
-    const { latestAssistant } =
-        getRecentContextForImageAnalysis(context);
-
-    const assistantText = preprocessForImagePrompt(latestAssistant);
-    const sanitizedInput = typeof rawSceneTags === 'string' ? rawSceneTags.trim() : '';
-    const memoryAnchorTags =
-        extension_settings[extensionName]?.llmAnalysis?.sceneMemory?.enabled
-            ? buildSceneMemoryAnchorTags()
-            : '';
-
-    if (!sanitizedInput) {
-        return '';
-    }
-
-    const sanitizePrompt = `Rewrite these image tags for stable diffusion.
-
-    Rules:
-    - output comma-separated tags only
-    - 1-4 words per tag
-    - 7-12 tags max
-    - remove duplicates and near-duplicates
-    - keep character identity traits if present
-    - keep pose, clothing, interaction, environment, and lighting only if visually clear
-    - preserve stable clothing, environment, prop, and lighting details from Scene memory unless the CURRENT assistant reply clearly changes them
-    - remove glamorized, glossy, or beauty-editorial wording unless explicitly required by the source
-    - prefer natural photographic wording when lighting is ambiguous
-    - prefer concrete visible nouns, poses, expressions, framing, clothing, props, and lighting
-    - keep interaction tags only if they describe something directly visible, like holding hands or touching shoulder
-    - drop inferred action, backstory, sequence, or transition language
-    - drop abstract emotion labels like happy mood, affectionate mood, playful energy, romantic tension
-    - drop non-visual bodily sensations or internal states like shaky legs, nervousness, arousal, anticipation
-    - rewrite vague expression tags into visible facial cues when possible, like smiling, parted lips, looking away
-    - do not add new details
-    - do not write sentences
-    - do not use quotes
-    - respond with tags only
-
-    Current assistant reply:
-    ${assistantText || '(none)'}
-
-    Scene memory:
-    ${memoryAnchorTags || '(none)'}
-
-    Input tags:
-    ${sanitizedInput}`;
-
-    const result = await callChat(
-        [
-            {
-                role: 'system',
-                content: 'You sanitize image-generation tags. Return only concise comma-separated tags.',
-            },
-            {
-                role: 'user',
-                content: sanitizePrompt,
-            },
-        ],
-        {
-            max_tokens: Math.max(200, Math.min(settings.promptMaxTokens ?? 400, 400)),
-            temperature: Math.min(settings.promptTemperature ?? 0.4, 0.2),
-        },
-    );
-
-    return result.trim().replace(/^["']|["']$/g, '');
-}
-
 async function handleIncomingMessage() {
     if (isImageAnalysisCall) {
         console.log(`[${extensionName}] skipped MESSAGE_RECEIVED because analysis call is already in progress`);
@@ -1259,8 +778,7 @@ async function handleIncomingMessage() {
         return;
     }
 
-    const { latestUser } = getRecentContextForImageAnalysis(context);
-    const userText = preprocessForImagePrompt(latestUser || '');
+    const { latestUserText: userText } = getImageAnalysisTextContext(context);
 
     let sceneEval = {
         generate: false,
@@ -1281,10 +799,7 @@ async function handleIncomingMessage() {
 
         sceneEval = await classifyReplyForImage(context);
 
-        const photoRequestRegex =
-            /((send|show|lemme\s*see|let\s*me\s*see|i\s*wanna\s*see|i\s*want\s*to\s*see|can\s*i\s*see|got\s*a?|any)\s*(me\s*)?(a\s*)?(pic|photo|picture|selfie|image|shot)s?)|((take|snap|shoot)\s*(me\s*)?(a\s*)?(pic|photo|picture|selfie))/i;
-
-        if (photoRequestRegex.test(userText)) {
+        if (PHOTO_REQUEST_REGEX.test(userText)) {
             sceneEval.generate = true;
             sceneEval.weight = 1.0;
             sceneEval.category = 'explicit_request';
