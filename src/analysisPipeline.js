@@ -1,6 +1,6 @@
 import { buildSceneMemoryAnchorTags } from './sceneMemory.js';
 
-function safeParseJsonObject(raw) {
+export function safeParseJsonObject(raw) {
     if (!raw || typeof raw !== 'string') {
         return null;
     }
@@ -25,7 +25,7 @@ function safeParseJsonObject(raw) {
     return null;
 }
 
-function cleanSanitizedTagOutput(raw) {
+export function cleanSanitizedTagOutput(raw) {
     if (typeof raw !== 'string') {
         return '';
     }
